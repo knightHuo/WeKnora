@@ -22,7 +22,7 @@
         <img src="https://img.shields.io/badge/License-MIT-ffffff?labelColor=d4eaf7&color=2e6cc4" alt="License">
     </a>
     <a href="./CHANGELOG.md">
-        <img alt="Version" src="https://img.shields.io/badge/version-0.3.6-2e6cc4?labelColor=d4eaf7">
+        <img alt="Version" src="https://img.shields.io/badge/version-0.4.0-2e6cc4?labelColor=d4eaf7">
     </a>
 </p>
 
@@ -48,9 +48,26 @@ WeKnora offers two Q&A modes — **Quick Q&A** and **Intelligent Reasoning**. Qu
 
 The framework supports auto-syncing knowledge from Feishu (more data sources coming soon), handles 10+ document formats including PDF, Word, images, and Excel, and can serve Q&A directly through IM channels like WeCom, Feishu, Slack, and Telegram. It is compatible with major LLM providers including OpenAI, DeepSeek, Qwen (Alibaba Cloud), Zhipu, Hunyuan, Gemini, MiniMax, NVIDIA, and Ollama. Its fully modular design allows swapping LLMs, vector databases, and storage backends, with support for local and private cloud deployment ensuring complete data sovereignty.
 
-**Website:** https://weknora.weixin.qq.com
 
 ## ✨ Latest Updates
+
+**v0.4.0 Highlights:**
+
+- **[Knowledge Assistant](https://weknora.weixin.qq.com/platform)**: Cloud-hosted knowledge assistant service for quick onboarding without local deployment
+- **WeKnora Cloud**: WeKnora Cloud provider with hosted LLM models and document parsing service, credential management and status checks
+- **[Chrome Extension](https://chromewebstore.google.com/detail/jpemjbopikggjlmikmclgbmkhhopjdgd)**: Browser extension for web page knowledge capture
+- **[ClawHub Skill](https://clawhub.ai/lyingbug/weknora)**: ClawHub Skill marketplace integration for one-click agent skill installation
+- **WeChat IM Integration**: WeChat channel adapter with QR code login and long-polling message support
+- **Attachment Processing**: File attachment support in chat pipeline with content formatting and metadata injection
+- **Azure OpenAI Provider**: Full Azure OpenAI support for chat, VLM, and embedding models with deployment name preservation and dimensions parameter
+- **Alibaba Cloud OSS Storage**: Object storage support via S3-compatible mode with configuration UI, connectivity test, and multi-language i18n
+- **Notion Connector**: Notion data source integration with API client, markdown renderer, and Connector interface
+- **Baidu & Ollama Web Search**: Added Baidu and Ollama as web search providers
+- **VectorStore Management**: Full VectorStore CRUD with entity, repository, service layer, connection testing, and API endpoints
+- **Bug Fixes**: Fixed Azure OpenAI endpoint handling, embedding truncation, IM citation tag stripping, neo4j Go 1.24 Windows compatibility, and OSS signature issues
+
+<details>
+<summary><b>Earlier Releases</b></summary>
 
 **v0.3.6 Highlights:**
 
@@ -77,8 +94,6 @@ The framework supports auto-syncing knowledge from Feishu (more data sources com
 - **Channel Tracking**: Knowledge entries and messages record source channel (web/api/im/browser_extension) for traceability
 - **Bug Fixes**: Fixed agent empty response when no knowledge base is configured, UTF-8 truncation in summaries for Chinese/emoji documents, API key encryption loss on tenant settings update, vLLM streaming reasoning content propagation, and rerank empty passage errors
 
-<details>
-<summary><b>Earlier Releases</b></summary>
 
 **v0.3.4 Highlights:**
 
@@ -169,7 +184,7 @@ Fully modular pipeline from document parsing, vectorization, and retrieval to LL
 | Capability | Details |
 |------------|---------|
 | Knowledge Base Types | FAQ / Document with folder import, URL import, tag management, and online entry |
-| Data Source Import | Auto-sync from Feishu (more data sources coming soon); incremental and full sync |
+| Data Source Import | Auto-sync from Feishu / Notion (more data sources coming soon); incremental and full sync |
 | Document Formats | PDF / Word / Txt / Markdown / HTML / Images / CSV / Excel / PPT / JSON |
 | Retrieval Strategies | BM25 sparse / Dense retrieval / GraphRAG / parent-child chunking / multi-dimensional indexing |
 | E2E Testing | Full-pipeline visualization with recall hit rate, BLEU / ROUGE metric evaluation |
@@ -178,12 +193,12 @@ Fully modular pipeline from document parsing, vectorization, and retrieval to LL
 
 | Capability | Details |
 |------------|---------|
-| LLMs | OpenAI / DeepSeek / Qwen (Alibaba Cloud) / Zhipu / Hunyuan / Doubao (Volcengine) / Gemini / MiniMax / NVIDIA / Novita AI / SiliconFlow / OpenRouter / Ollama |
+| LLMs | OpenAI / Azure OpenAI / DeepSeek / Qwen (Alibaba Cloud) / Zhipu / Hunyuan / Doubao (Volcengine) / Gemini / MiniMax / NVIDIA / Novita AI / SiliconFlow / OpenRouter / Ollama |
 | Embeddings | Ollama / BGE / GTE / OpenAI-compatible APIs |
 | Vector DBs | PostgreSQL (pgvector) / Elasticsearch / Milvus / Weaviate / Qdrant |
 | Object Storage | Local / MinIO / AWS S3 / Volcengine TOS / Alibaba Cloud OSS |
-| IM Channels | WeCom / Feishu / Slack / Telegram / DingTalk / Mattermost |
-| Web Search | DuckDuckGo / Bing / Google / Tavily |
+| IM Channels | WeCom / Feishu / Slack / Telegram / DingTalk / Mattermost / WeChat |
+| Web Search | DuckDuckGo / Bing / Google / Tavily / Baidu / Ollama |
 
 **🛡️ Platform**
 
@@ -192,93 +207,65 @@ Fully modular pipeline from document parsing, vectorization, and retrieval to LL
 | Deployment | Local / Docker / Kubernetes (Helm) with private and offline support |
 | UI | Web UI / RESTful API / Chrome Extension |
 | Task Management | MQ async tasks, automatic database migration on version upgrade |
-| Model Management | Centralized config, per-knowledge-base model selection, multi-tenant built-in model sharing |
+| Model Management | Centralized config, per-knowledge-base model selection, multi-tenant built-in model sharing, WeKnora Cloud hosted models and parsing |
+
+## 🧩 Chrome Extension
+
+[**WeKnora Chrome Extension**](https://chromewebstore.google.com/detail/jpemjbopikggjlmikmclgbmkhhopjdgd) lets you capture web content directly into your WeKnora knowledge base. Select text, images, or entire pages in the browser and save them as knowledge entries with one click — no copy-paste or file upload needed.
+
+
+## 🦞 ClawHub Skill
+
+[**WeKnora ClawHub Skill**](https://clawhub.ai/lyingbug/weknora) is a WeKnora skill published on the ClawHub platform. Once installed, it enables document import (file / URL / Markdown), hybrid search (vector + keyword) across knowledge bases, and knowledge entry management — all through the WeKnora REST API.
+
+- **Document Import** — Upload files, import web pages, or write Markdown knowledge via the agent
+- **Hybrid Search** — Search within or across knowledge bases with vector + keyword retrieval
+- **Knowledge Management** — List, browse, edit, and delete knowledge entries programmatically
+
 
 ## 🚀 Getting Started
 
 ### 🛠 Prerequisites
 
-Make sure the following tools are installed on your system:
+- [Docker](https://www.docker.com/) & [Docker Compose](https://docs.docker.com/compose/)
+- [Git](https://git-scm.com/)
 
-* [Docker](https://www.docker.com/)
-* [Docker Compose](https://docs.docker.com/compose/)
-* [Git](https://git-scm.com/)
-
-### 📦 Installation
-
-#### ① Clone the repository
+### 📦 Installation & Launch
 
 ```bash
-# Clone the main repository
 git clone https://github.com/Tencent/WeKnora.git
 cd WeKnora
+cp .env.example .env   # Edit .env as needed, see comments in the file
+docker compose up -d   # Start core services
 ```
 
-#### ② Configure environment variables
+Once started, visit **http://localhost** to get started.
 
-```bash
-# Copy example env file
-cp .env.example .env
+> To use a local Ollama model, run `ollama serve > /dev/null 2>&1 &` first.
 
-# Edit .env and set required values
-# All variables are documented in the .env.example comments
-```
+### 🔧 Optional Services (Docker Compose Profiles)
 
-#### ③ Start the core services
+Add `--profile` flags to enable additional components. Multiple profiles can be combined:
 
-#### Start Ollama separately (Optional)
+| Profile | Description | Command |
+|---------|-------------|---------|
+| _(default)_ | Core services | `docker compose up -d` |
+| `full` | All features | `docker compose --profile full up -d` |
+| `neo4j` | Knowledge Graph (Neo4j) | `docker compose --profile neo4j up -d` |
+| `minio` | Object Storage (MinIO) | `docker compose --profile minio up -d` |
+| `jaeger` | Tracing (Jaeger) | `docker compose --profile jaeger up -d` |
 
-If you configured a local Ollama model in `.env`, start the Ollama service separately:
+Combine profiles: `docker compose --profile neo4j --profile minio up -d`
 
-```bash
-ollama serve > /dev/null 2>&1 &
-```
+Stop services: `docker compose down`
 
-#### Activate different combinations of features
+### 🌐 Service URLs
 
-- Minimum core services
-```bash
-docker compose up -d
-```
-
-- All features enabled
-```bash
-docker compose --profile full up -d
-```
-
-- Tracing logs required
-```bash
-docker compose --profile jaeger up -d
-```
-
-- Neo4j knowledge graph required
-```bash
-docker compose --profile neo4j up -d
-```
-
-- Minio file storage service required
-```bash
-docker compose --profile minio up -d
-```
-
-- Multiple options combination
-```bash
-docker compose --profile neo4j --profile minio up -d
-```
-
-#### ④ Stop the services
-
-```bash
-docker compose down
-```
-
-### 🌐 Access Services
-
-Once started, services will be available at:
-
-* Web UI: `http://localhost`
-* Backend API: `http://localhost:8080`
-* Jaeger Tracing: `http://localhost:16686`
+| Service | URL |
+|---------|-----|
+| Web UI | `http://localhost` |
+| Backend API | `http://localhost:8080` |
+| Jaeger Tracing | `http://localhost:16686` |
 
 ## 📱 Interface Showcase
 
@@ -362,42 +349,11 @@ WeKnora/
 
 ## 🤝 Contributing
 
-We welcome community contributions! For suggestions, bugs, or feature requests, please submit an [Issue](https://github.com/Tencent/WeKnora/issues) or directly create a Pull Request.
+Welcome to submit [Issues](https://github.com/Tencent/WeKnora/issues) or Pull Requests.
 
-### 🎯 How to Contribute
+**Process:** Fork → Create branch → Commit changes → Open PR
 
-- 🐛 **Bug Fixes**: Discover and fix system defects
-- ✨ **New Features**: Propose and implement new capabilities
-- 📚 **Documentation**: Improve project documentation
-- 🧪 **Test Cases**: Write unit and integration tests
-- 🎨 **UI/UX Enhancements**: Improve user interface and experience
-
-### 📋 Contribution Process
-
-1. **Fork the project** to your GitHub account
-2. **Create a feature branch** `git checkout -b feature/amazing-feature`
-3. **Commit changes** `git commit -m 'Add amazing feature'`
-4. **Push branch** `git push origin feature/amazing-feature`
-5. **Create a Pull Request** with detailed description of changes
-
-### 🎨 Code Standards
-
-- Follow [Go Code Review Comments](https://github.com/golang/go/wiki/CodeReviewComments)
-- Format code using `gofmt`
-- Add necessary unit tests
-- Update relevant documentation
-
-### 📝 Commit Guidelines
-
-Use [Conventional Commits](https://www.conventionalcommits.org/) standard:
-
-```
-feat: Add document batch upload functionality
-fix: Resolve vector retrieval precision issue
-docs: Update API documentation
-test: Add retrieval engine test cases
-refactor: Restructure document parsing module
-```
+**Standards:** Format code with `gofmt`, follow [Conventional Commits](https://www.conventionalcommits.org/) (`feat:` / `fix:` / `docs:` / `test:` / `refactor:`)
 
 ## 🔒 Security Notice
 
