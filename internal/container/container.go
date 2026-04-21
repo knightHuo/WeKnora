@@ -175,6 +175,8 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(service.NewChunkExtractService, dig.Name("chunkExtractor")))
 	must(container.Provide(service.NewDataTableSummaryService, dig.Name("dataTableSummary")))
 	must(container.Provide(service.NewImageMultimodalService, dig.Name("imageMultimodal")))
+	must(container.Provide(service.NewKnowledgePostProcessService, dig.Name("knowledgePostProcess")))
+
 
 	must(container.Provide(service.NewMessageService))
 	must(container.Provide(service.NewMCPServiceService))
@@ -189,6 +191,16 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repository.NewVectorStoreRepository))
 	must(container.Provide(service.NewWebSearchService))
 	must(container.Provide(service.NewWebSearchProviderService))
+	must(container.Provide(NewEngineFactory))
+	// StoreRegistry: same instance as RetrieveEngineRegistry, exposed as StoreRegistry interface.
+	// NewRetrieveEngineRegistry always returns *retriever.RetrieveEngineRegistry which implements both.
+	must(container.Provide(func(r interfaces.RetrieveEngineRegistry) (interfaces.StoreRegistry, error) {
+		sr, ok := r.(*retriever.RetrieveEngineRegistry)
+		if !ok {
+			return nil, fmt.Errorf("registry does not implement StoreRegistry")
+		}
+		return sr, nil
+	}))
 	must(container.Provide(service.NewVectorStoreService))
 
 	// Agent service layer (requires event bus, web search service)
@@ -514,8 +526,39 @@ func resolveStorageProviderPending(db *gorm.DB) {
 		logger.Infof(context.Background(), "Resolved %d knowledge bases with __pending_env__ storage provider → %s", result.RowsAffected, storageType)
 	}
 
+	// Sync PostgreSQL sequences with actual MAX values to prevent duplicate key
+	// errors. The old code assigned seq_id via SELECT MAX()+1 in application
+	// code, which could push values past the DB sequence counter.
+	syncSequences(db)
+
 	// Reset any pending tasks left over from previous aborted runs (Lite App mode)
 	resetPendingTasks(db)
+}
+
+// syncSequences ensures PostgreSQL sequences for auto-increment columns (seq_id)
+// are at least as high as the current MAX value in each table. This is needed
+// because older code assigned seq_id via application-level MAX()+1, which could
+// advance values past the DB sequence counter and cause duplicate key errors.
+func syncSequences(db *gorm.DB) {
+	if db.Dialector.Name() != "postgres" {
+		return
+	}
+	pairs := [][2]string{
+		{"chunks", "chunks_seq_id_seq"},
+		{"knowledge_tags", "knowledge_tags_seq_id_seq"},
+	}
+	for _, p := range pairs {
+		table, seq := p[0], p[1]
+		sql := fmt.Sprintf(
+			`SELECT setval('%s', GREATEST(nextval('%s'), (SELECT COALESCE(MAX(seq_id), 0) FROM %s)))`,
+			seq, seq, table,
+		)
+		if err := db.Exec(sql).Error; err != nil {
+			logger.Warnf(context.Background(), "Failed to sync sequence %s: %v", seq, err)
+		} else {
+			logger.Infof(context.Background(), "Synced sequence %s with table %s", seq, table)
+		}
+	}
 }
 
 // resetPendingTasks resets the state of any knowledge items or sync logs stuck in processing
@@ -728,7 +771,7 @@ func initRetrieveEngineRegistry(db *gorm.DB, cfg *config.Config) (interfaces.Ret
 		if err != nil {
 			log.Errorf("Create elasticsearch_v8 client failed: %v", err)
 		} else {
-			elasticsearchRepo := elasticsearchRepoV8.NewElasticsearchEngineRepository(client, cfg)
+			elasticsearchRepo := elasticsearchRepoV8.NewElasticsearchEngineRepository(client, cfg, nil)
 			if err := registry.Register(
 				retriever.NewKVHybridRetrieveEngine(
 					elasticsearchRepo, types.ElasticsearchRetrieverEngineType,
@@ -750,7 +793,7 @@ func initRetrieveEngineRegistry(db *gorm.DB, cfg *config.Config) (interfaces.Ret
 		if err != nil {
 			log.Errorf("Create elasticsearch_v7 client failed: %v", err)
 		} else {
-			elasticsearchRepo := elasticsearchRepoV7.NewElasticsearchEngineRepository(client, cfg)
+			elasticsearchRepo := elasticsearchRepoV7.NewElasticsearchEngineRepository(client, cfg, nil)
 			if err := registry.Register(
 				retriever.NewKVHybridRetrieveEngine(
 					elasticsearchRepo, types.ElasticsearchRetrieverEngineType,
@@ -798,7 +841,7 @@ func initRetrieveEngineRegistry(db *gorm.DB, cfg *config.Config) (interfaces.Ret
 		if err != nil {
 			log.Errorf("Create qdrant client failed: %v", err)
 		} else {
-			qdrantRepository := qdrantRepo.NewQdrantRetrieveEngineRepository(client)
+			qdrantRepository := qdrantRepo.NewQdrantRetrieveEngineRepository(client, nil)
 			if err := registry.Register(
 				retriever.NewKVHybridRetrieveEngine(
 					qdrantRepository, types.QdrantRetrieverEngineType,
@@ -841,7 +884,7 @@ func initRetrieveEngineRegistry(db *gorm.DB, cfg *config.Config) (interfaces.Ret
 		if err != nil {
 			log.Errorf("Create weaviate client failed: %v", err)
 		} else {
-			weaviateRepository := weaviateRepo.NewWeaviateRetrieveEngineRepository(weaviateClient)
+			weaviateRepository := weaviateRepo.NewWeaviateRetrieveEngineRepository(weaviateClient, nil)
 			if err := registry.Register(
 				retriever.NewKVHybridRetrieveEngine(
 					weaviateRepository, types.WeaviateRetrieverEngineType,
@@ -878,7 +921,7 @@ func initRetrieveEngineRegistry(db *gorm.DB, cfg *config.Config) (interfaces.Ret
 		if err != nil {
 			log.Errorf("Create milvus client failed: %v", err)
 		} else {
-			milvusRepository := milvusRepo.NewMilvusRetrieveEngineRepository(milvusCli)
+			milvusRepository := milvusRepo.NewMilvusRetrieveEngineRepository(milvusCli, nil)
 			if err := registry.Register(
 				retriever.NewKVHybridRetrieveEngine(
 					milvusRepository, types.MilvusRetrieverEngineType,
@@ -890,7 +933,41 @@ func initRetrieveEngineRegistry(db *gorm.DB, cfg *config.Config) (interfaces.Ret
 			}
 		}
 	}
+	// ─── DB store registration (byStoreID) ───
+	if storeReg, ok := registry.(*retriever.RetrieveEngineRegistry); ok {
+		loadDBStoresIntoRegistry(storeReg, db, cfg)
+	}
+
 	return registry, nil
+}
+
+// loadDBStoresIntoRegistry loads VectorStore records from DB and registers them
+// in the registry's byStoreID map. Failures are logged and skipped (non-fatal).
+func loadDBStoresIntoRegistry(storeRegistry interfaces.StoreRegistry, db *gorm.DB, cfg *config.Config) {
+	ctx := context.Background()
+	log := logger.GetLogger(ctx)
+
+	var stores []types.VectorStore
+	// GORM soft delete automatically adds "deleted_at IS NULL" condition
+	if err := db.Find(&stores).Error; err != nil {
+		log.Warnf("Failed to load vector stores from DB: %v", err)
+		return
+	}
+
+	if len(stores) == 0 {
+		return
+	}
+
+	log.Infof("Loading %d vector store(s) from database", len(stores))
+	for _, store := range stores {
+		svc, err := createEngineServiceFromStore(ctx, store, db, cfg)
+		if err != nil {
+			log.Errorf("Failed to create engine for store %s (%s): %v", store.ID, store.Name, err)
+			continue
+		}
+		storeRegistry.RegisterWithStoreID(store.ID, svc)
+		log.Infof("Registered DB vector store: id=%s, name=%s, engine=%s", store.ID, store.Name, store.EngineType)
+	}
 }
 
 // initAntsPool initializes the goroutine pool
