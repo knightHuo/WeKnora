@@ -46,3 +46,5 @@ web/
 frontend/.vite
 frontend/chrome-extension/
 WeKnora-Chrome-Extension
+
+docs/
