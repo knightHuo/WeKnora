@@ -7,6 +7,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -1132,16 +1133,17 @@ func NewDuckDB() (*sql.DB, error) {
 		return nil, fmt.Errorf("failed to open duckdb: %w", err)
 	}
 
-	// Try to install and load spatial extension
-	installSQL := "INSTALL spatial;"
-	if _, err := sqlDB.ExecContext(context.Background(), installSQL); err != nil {
-		logger.Warnf(context.Background(), "[DuckDB] Failed to install spatial extension: %v", err)
-	}
-
-	// Try to load spatial extension
-	loadSQL := "LOAD spatial;"
-	if _, err := sqlDB.ExecContext(context.Background(), loadSQL); err != nil {
-		logger.Warnf(context.Background(), "[DuckDB] Failed to load spatial extension: %v", err)
+	// Try to install and load required extensions.
+	//   - spatial: used for st_read_meta() to enumerate layer (sheet) names from .xlsx/.xls
+	//   - excel:   used for read_xlsx() which gives proper type inference per sheet
+	bgCtx := context.Background()
+	for _, ext := range []string{"spatial", "excel"} {
+		if _, err := sqlDB.ExecContext(bgCtx, fmt.Sprintf("INSTALL %s;", ext)); err != nil {
+			logger.Warnf(bgCtx, "[DuckDB] Failed to install %s extension: %v", ext, err)
+		}
+		if _, err := sqlDB.ExecContext(bgCtx, fmt.Sprintf("LOAD %s;", ext)); err != nil {
+			logger.Warnf(bgCtx, "[DuckDB] Failed to load %s extension: %v", ext, err)
+		}
 	}
 
 	return sqlDB, nil
@@ -1496,23 +1498,30 @@ func credentialBool(creds map[string]interface{}, key string) bool {
 }
 
 // initConnectorRegistry creates and populates the connector registry with all available connectors.
-func initConnectorRegistry() *datasource.ConnectorRegistry {
+// Aggregates registration errors via errors.Join so a misconfigured or duplicated connector fails
+// container initialization loudly instead of silently disabling the feature at runtime.
+func initConnectorRegistry() (*datasource.ConnectorRegistry, error) {
 	registry := datasource.NewConnectorRegistry()
 
-	// Register Feishu connector
-	_ = registry.Register(feishuConnector.NewConnector())
-
-	// Register Notion connector
-	_ = registry.Register(notionConnector.NewConnector())
-
-	// Register Yuque connector
-	_ = registry.Register(yuqueConnector.NewConnector())
+	var errs error
+	if err := registry.Register(feishuConnector.NewConnector()); err != nil {
+		errs = errors.Join(errs, fmt.Errorf("register feishu connector: %w", err))
+	}
+	if err := registry.Register(notionConnector.NewConnector()); err != nil {
+		errs = errors.Join(errs, fmt.Errorf("register notion connector: %w", err))
+	}
+	if err := registry.Register(yuqueConnector.NewConnector()); err != nil {
+		errs = errors.Join(errs, fmt.Errorf("register yuque connector: %w", err))
+	}
 
 	// Future connectors will be registered here:
-	// _ = registry.Register(confluenceConnector.NewConnector())
-	// _ = registry.Register(githubConnector.NewConnector())
+	// if err := registry.Register(confluenceConnector.NewConnector()); err != nil { ... }
+	// if err := registry.Register(githubConnector.NewConnector()); err != nil { ... }
 
-	return registry
+	if errs != nil {
+		return nil, errs
+	}
+	return registry, nil
 }
 
 // startDataSourceScheduler starts the data source cron scheduler and registers cleanup.
