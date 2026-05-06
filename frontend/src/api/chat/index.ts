@@ -10,6 +10,14 @@ export async function getSessionsList(page: number, page_size: number) {
   return get(`/api/v1/sessions?page=${page}&page_size=${page_size}`);
 }
 
+export async function pinSession(session_id: string) {
+  return post(`/api/v1/sessions/${session_id}/pin`, {});
+}
+
+export async function unpinSession(session_id: string) {
+  return del(`/api/v1/sessions/${session_id}/pin`);
+}
+
 export async function generateSessionsTitle(session_id: string, data: any) {
   return post(`/api/v1/sessions/${session_id}/generate_title`, data);
 }

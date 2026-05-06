@@ -42,7 +42,7 @@ const clearOIDCCallbackState = (path = '/') => {
 
 const syncOIDCUserContext = async () => {
   const currentUserResponse = await getCurrentUser()
-  if (!currentUserResponse.success || !currentUserResponse.data?.user || !currentUserResponse.data?.tenant) {
+  if (!currentUserResponse.success || !currentUserResponse.data?.user) {
     throw new Error(currentUserResponse.message || 'Failed to get user information')
   }
 
@@ -52,24 +52,26 @@ const syncOIDCUserContext = async () => {
     username: user.username || '',
     email: user.email || '',
     avatar: user.avatar,
-    tenant_id: String(user.tenant_id || tenant.id || ''),
+    tenant_id: String(user.tenant_id || tenant?.id || ''),
     can_access_all_tenants: user.can_access_all_tenants || false,
     created_at: user.created_at || new Date().toISOString(),
     updated_at: user.updated_at || new Date().toISOString()
   })
-  authStore.setTenant({
-    id: String(tenant.id) || '',
-    name: tenant.name || '',
-    api_key: tenant.api_key || '',
-    owner_id: tenant.owner_id || user.id || '',
-    description: tenant.description,
-    status: tenant.status,
-    business: tenant.business,
-    storage_quota: tenant.storage_quota,
-    storage_used: tenant.storage_used,
-    created_at: tenant.created_at || new Date().toISOString(),
-    updated_at: tenant.updated_at || new Date().toISOString()
-  })
+  if (tenant) {
+    authStore.setTenant({
+      id: String(tenant.id) || '',
+      name: tenant.name || '',
+      api_key: tenant.api_key || '',
+      owner_id: tenant.owner_id || user.id || '',
+      description: tenant.description,
+      status: tenant.status,
+      business: tenant.business,
+      storage_quota: tenant.storage_quota,
+      storage_used: tenant.storage_used,
+      created_at: tenant.created_at || new Date().toISOString(),
+      updated_at: tenant.updated_at || new Date().toISOString()
+    })
+  }
 }
 
 const persistOIDCLoginResponse = async (response: any) => {
@@ -190,9 +192,8 @@ html,
     height: 100%;
     margin: 0;
     padding: 0;
-    font-size: 14px;
-    font-family: Helvetica Neue, Helvetica, PingFang SC, Hiragino Sans GB,
-        Microsoft YaHei, SimSun, sans-serif;
+    font-size: calc(14px * var(--app-font-scale, 1));
+    font-family: var(--app-font-family);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     background: var(--td-bg-color-page);

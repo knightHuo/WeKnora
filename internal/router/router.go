@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -24,6 +25,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/tracing/langfuse"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
+	secutils "github.com/Tencent/WeKnora/internal/utils"
 
 	_ "github.com/Tencent/WeKnora/docs" // swagger docs
 )
@@ -119,6 +121,9 @@ func NewRouter(params RouterParams) *gin.Engine {
 
 	// 文件服务：统一代理本地/MinIO/COS/TOS存储后端（需要认证）
 	serveFiles(r)
+
+	// Presigned file access: no auth required, signature-verified.
+	servePresignedFiles(r, params.TenantService)
 
 	// 添加OpenTelemetry追踪中间件
 	// r.Use(middleware.TracingMiddleware())
@@ -331,6 +336,12 @@ func RegisterSessionRoutes(r *gin.RouterGroup, handler *session.Handler) {
 		sessions.DELETE("/:id/messages", handler.ClearSessionMessages)
 		sessions.POST("/:session_id/generate_title", handler.GenerateTitle)
 		sessions.POST("/:session_id/stop", handler.StopSession)
+		// POST and DELETE share this path but gin maintains a separate radix tree
+		// per HTTP verb, and the existing trees use different wildcard names
+		// (POST uses :session_id, DELETE uses :id). Use whatever matches each
+		// tree to avoid "wildcard conflicts" panic at route registration.
+		sessions.POST("/:session_id/pin", handler.PinSession)
+		sessions.DELETE("/:id/pin", handler.UnpinSession)
 		// 继续接收活跃流
 		sessions.GET("/continue-stream/:session_id", handler.ContinueStream)
 	}
@@ -369,6 +380,7 @@ func RegisterTenantRoutes(r *gin.RouterGroup, handler *handler.TenantHandler) {
 		tenantRoutes.GET("/:id", handler.GetTenant)
 		tenantRoutes.PUT("/:id", handler.UpdateTenant)
 		tenantRoutes.DELETE("/:id", handler.DeleteTenant)
+		tenantRoutes.POST("/:id/api-key", handler.ResetAPIKey)
 		tenantRoutes.GET("", handler.ListTenants)
 
 		// Generic KV configuration management (tenant-level)
@@ -670,6 +682,7 @@ func RegisterIMChannelRoutes(r *gin.RouterGroup, imHandler *handler.IMHandler) {
 	// Channel operations by channel ID
 	channels := r.Group("/im-channels")
 	{
+		channels.GET("", imHandler.ListAllIMChannels)
 		channels.PUT("/:id", imHandler.UpdateIMChannel)
 		channels.DELETE("/:id", imHandler.DeleteIMChannel)
 		channels.POST("/:id/toggle", imHandler.ToggleIMChannel)
@@ -802,6 +815,97 @@ func serveFiles(r *gin.Engine) {
 		c.Status(http.StatusOK)
 		if _, err := io.Copy(c.Writer, reader); err != nil {
 			logger.Warnf(context.Background(), "[Router] /files write response failed: %v", err)
+		}
+	})
+}
+
+// servePresignedFiles serves files via HMAC-signed URLs without requiring authentication.
+// This is used by IM channels to serve images that are embedded in bot replies.
+//
+// Route:
+//   - /api/v1/files/presigned?file_path=<provider://...>&tenant_id=<id>&expires=<unix>&sig=<hmac>
+func servePresignedFiles(r *gin.Engine, tenantService interfaces.TenantService) {
+	baseDir := os.Getenv("LOCAL_STORAGE_BASE_DIR")
+	if baseDir == "" {
+		baseDir = "/data/files"
+	}
+	absDir, _ := filepath.Abs(baseDir)
+
+	r.GET("/api/v1/files/presigned", func(c *gin.Context) {
+		filePath := strings.TrimSpace(c.Query("file_path"))
+		tenantIDStr := strings.TrimSpace(c.Query("tenant_id"))
+		expiresStr := strings.TrimSpace(c.Query("expires"))
+		sig := strings.TrimSpace(c.Query("sig"))
+
+		if filePath == "" || tenantIDStr == "" || expiresStr == "" || sig == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "missing required parameters"})
+			return
+		}
+		if strings.Contains(filePath, "..") {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid file path"})
+			return
+		}
+
+		tenantID, err := strconv.ParseUint(tenantIDStr, 10, 64)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid tenant_id"})
+			return
+		}
+
+		// Verify HMAC signature and expiry.
+		if !secutils.VerifyFileURLSig(filePath, tenantID, expiresStr, sig) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "invalid or expired signature"})
+			return
+		}
+
+		// Resolve the file service for this tenant.
+		provider := types.ParseProviderScheme(filePath)
+		tenant, err := tenantService.GetTenantByID(c.Request.Context(), tenantID)
+		if err != nil {
+			logger.Warnf(context.Background(), "[Router] /files/presigned tenant lookup failed: tenant_id=%d err=%v", tenantID, err)
+			c.Status(http.StatusNotFound)
+			return
+		}
+
+		fileSvc, resolvedProvider, err := filesvc.NewFileServiceFromStorageConfig(provider, tenant.StorageEngineConfig, absDir)
+		if err != nil {
+			logger.Warnf(context.Background(), "[Router] /files/presigned resolve file service failed: tenant_id=%d provider=%s err=%v", tenantID, provider, err)
+			c.Status(http.StatusBadRequest)
+			return
+		}
+
+		reader, err := fileSvc.GetFile(c.Request.Context(), filePath)
+		if err != nil {
+			logger.Warnf(context.Background(), "[Router] /files/presigned get file failed: tenant_id=%d provider=%s path=%q err=%v", tenantID, resolvedProvider, filePath, err)
+			c.Status(http.StatusNotFound)
+			return
+		}
+		defer reader.Close()
+
+		ext := filepath.Ext(filePath)
+		contentType := "application/octet-stream"
+		switch strings.ToLower(ext) {
+		case ".png":
+			contentType = "image/png"
+		case ".jpg", ".jpeg":
+			contentType = "image/jpeg"
+		case ".gif":
+			contentType = "image/gif"
+		case ".webp":
+			contentType = "image/webp"
+		case ".bmp":
+			contentType = "image/bmp"
+		case ".svg":
+			contentType = "image/svg+xml"
+		case ".pdf":
+			contentType = "application/pdf"
+		}
+
+		c.Header("Content-Type", contentType)
+		c.Header("Cache-Control", "public, max-age=86400")
+		c.Status(http.StatusOK)
+		if _, err := io.Copy(c.Writer, reader); err != nil {
+			logger.Warnf(context.Background(), "[Router] /files/presigned write response failed: %v", err)
 		}
 	})
 }

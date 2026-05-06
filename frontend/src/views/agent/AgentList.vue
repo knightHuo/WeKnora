@@ -715,6 +715,19 @@ const checkAndOpenEditModal = () => {
   }
 }
 
+// Also re-run when the query mutates while this view is already mounted —
+// e.g. the IM overview dialog navigating here via router.push lands on the
+// same route, so onMounted alone never fires and the editor would only open
+// after a manual refresh.
+watch(
+  () => route.query.edit,
+  (v) => {
+    if (v && agents.value.length > 0) {
+      checkAndOpenEditModal()
+    }
+  },
+)
+
 // 监听菜单创建智能体事件
 const handleOpenAgentEditor = (event: CustomEvent) => {
   if (event.detail?.mode === 'create') {
@@ -1014,7 +1027,7 @@ defineExpose({
   h2 {
     margin: 0;
     color: var(--td-text-color-primary);
-    font-family: "PingFang SC";
+    font-family: var(--app-font-family);
     font-size: 24px;
     font-weight: 600;
     line-height: 32px;
@@ -1085,7 +1098,7 @@ defineExpose({
 .header-subtitle {
   margin: 0;
   color: var(--td-text-color-placeholder);
-  font-family: "PingFang SC";
+  font-family: var(--app-font-family);
   font-size: 14px;
   font-weight: 400;
   line-height: 20px;
@@ -1140,7 +1153,7 @@ defineExpose({
     padding: 12px 0;
     cursor: pointer;
     color: var(--td-text-color-secondary);
-    font-family: "PingFang SC";
+    font-family: var(--app-font-family);
     font-size: 14px;
     font-weight: 400;
     transition: color 0.2s;
@@ -1180,7 +1193,7 @@ defineExpose({
 
 .org-source-text {
   color: var(--td-text-color-secondary);
-  font-family: "PingFang SC";
+  font-family: var(--app-font-family);
   font-size: 11px;
   font-weight: 500;
   flex-shrink: 0;
@@ -1194,7 +1207,7 @@ defineExpose({
   border-radius: 10px;
   background: var(--td-bg-color-container-hover);
   color: var(--td-text-color-secondary);
-  font-family: "PingFang SC";
+  font-family: var(--app-font-family);
   font-size: 11px;
   font-weight: 500;
   flex-shrink: 0;
@@ -1370,7 +1383,7 @@ defineExpose({
 
 .card-title {
   color: var(--td-text-color-primary);
-  font-family: "PingFang SC", -apple-system, sans-serif;
+  font-family: var(--app-font-family);
   font-size: 15px;
   font-weight: 600;
   line-height: 22px;
@@ -1390,7 +1403,7 @@ defineExpose({
   border-radius: 10px;
   background: var(--td-bg-color-container-hover);
   color: var(--td-text-color-secondary);
-  font-family: "PingFang SC";
+  font-family: var(--app-font-family);
   font-size: 11px;
   font-weight: 500;
   flex-shrink: 0;
@@ -1491,7 +1504,7 @@ defineExpose({
   line-clamp: 2;
   overflow: hidden;
   color: var(--td-text-color-secondary);
-  font-family: "PingFang SC", -apple-system, sans-serif;
+  font-family: var(--app-font-family);
   font-size: 12px;
   font-weight: 400;
   line-height: 18px;
@@ -1585,7 +1598,7 @@ defineExpose({
 
 .card-time {
   color: var(--td-text-color-placeholder);
-  font-family: "PingFang SC";
+  font-family: var(--app-font-family);
   font-size: 12px;
   font-weight: 400;
 }
@@ -1606,7 +1619,7 @@ defineExpose({
 
   .empty-txt {
     color: var(--td-text-color-placeholder);
-    font-family: "PingFang SC";
+    font-family: var(--app-font-family);
     font-size: 16px;
     font-weight: 600;
     line-height: 26px;
@@ -1615,7 +1628,7 @@ defineExpose({
 
   .empty-desc {
     color: var(--td-text-color-disabled);
-    font-family: "PingFang SC";
+    font-family: var(--app-font-family);
     font-size: 14px;
     font-weight: 400;
     line-height: 22px;
@@ -1683,7 +1696,7 @@ defineExpose({
 
   .circle-title {
     color: var(--td-text-color-primary);
-    font-family: "PingFang SC";
+    font-family: var(--app-font-family);
     font-size: 16px;
     font-weight: 600;
     line-height: 24px;
@@ -1691,7 +1704,7 @@ defineExpose({
 
   .del-circle-txt {
     color: var(--td-text-color-placeholder);
-    font-family: "PingFang SC";
+    font-family: var(--app-font-family);
     font-size: 14px;
     font-weight: 400;
     line-height: 22px;
@@ -1709,7 +1722,7 @@ defineExpose({
 
   .circle-btn-txt {
     color: var(--td-text-color-primary);
-    font-family: "PingFang SC";
+    font-family: var(--app-font-family);
     font-size: 14px;
     font-weight: 400;
     line-height: 22px;
@@ -1755,7 +1768,7 @@ defineExpose({
   box-shadow: -4px 0 24px rgba(0, 0, 0, 0.12);
   display: flex;
   flex-direction: column;
-  font-family: "PingFang SC", sans-serif;
+  font-family: var(--app-font-family);
 }
 
 .shared-detail-drawer-header {

@@ -740,11 +740,7 @@ func (s *sessionService) handleModelFallback(ctx context.Context, chatManage *ty
 	}
 
 	// Start streaming response
-	userMsg := chat.Message{Role: "user", Content: promptContent}
-	if chatManage.ChatModelSupportsVision && len(chatManage.Images) > 0 {
-		userMsg.Images = chatManage.Images
-	}
-	responseChan, err := chatModel.ChatStream(ctx, []chat.Message{userMsg}, opt)
+	responseChan, err := chatModel.ChatStream(ctx, buildFallbackMessages(chatManage, promptContent), opt)
 	if err != nil {
 		logger.Errorf(ctx, "Failed to start streaming fallback response: %v, falling back to fixed response", err)
 		s.handleFixedFallback(ctx, chatManage)
@@ -759,6 +755,18 @@ func (s *sessionService) handleModelFallback(ctx context.Context, chatManage *ty
 
 	// Start goroutine to consume stream and emit events
 	go s.consumeFallbackStream(ctx, chatManage, responseChan)
+}
+
+func buildFallbackMessages(chatManage *types.ChatManage, promptContent string) []chat.Message {
+	messages := make([]chat.Message, 0, len(chatManage.History)*2+1)
+	messages = chatpipeline.AppendHistoryMessages(messages, chatManage.History)
+
+	userMsg := chat.Message{Role: "user", Content: promptContent}
+	if chatManage.ChatModelSupportsVision && len(chatManage.Images) > 0 {
+		userMsg.Images = chatManage.Images
+	}
+
+	return append(messages, userMsg)
 }
 
 // renderFallbackPrompt renders the fallback prompt template with query and image context.
@@ -962,8 +970,8 @@ func (s *sessionService) resolveWebSearchMaxResults(ctx context.Context, req *ty
 		return req.CustomAgent.Config.WebSearchMaxResults
 	}
 	tenantInfo, _ := types.TenantInfoFromContext(ctx)
-	if tenantInfo != nil && tenantInfo.WebSearchConfig != nil && tenantInfo.WebSearchConfig.MaxResults > 0 {
-		return tenantInfo.WebSearchConfig.MaxResults
+	if tenantInfo != nil {
+		return types.EffectiveWebSearchConfig(tenantInfo.WebSearchConfig).MaxResults
 	}
-	return 10
+	return types.DefaultWebSearchMaxResults
 }

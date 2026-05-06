@@ -3,6 +3,7 @@ package handler
 import (
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -222,6 +223,54 @@ func (h *TenantHandler) UpdateTenant(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"data":    updatedTenant,
+	})
+}
+
+// ResetAPIKey godoc
+// @Summary      重置租户 API Key
+// @Description  为指定租户生成一个新的 API Key，旧 Key 立即失效
+// @Tags         租户管理
+// @Accept       json
+// @Produce      json
+// @Param        id   path      int  true  "租户ID"
+// @Success      200  {object}  map[string]interface{}  "新生成的 API Key"
+// @Failure      400  {object}  errors.AppError         "请求参数错误"
+// @Failure      403  {object}  errors.AppError         "权限不足"
+// @Security     Bearer
+// @Router       /tenants/{id}/api-key [post]
+func (h *TenantHandler) ResetAPIKey(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		logger.Errorf(ctx, "Invalid tenant ID: %s", secutils.SanitizeForLog(c.Param("id")))
+		c.Error(errors.NewBadRequestError("Invalid tenant ID"))
+		return
+	}
+
+	if _, ok := h.authorizeTenantAccess(c, id); !ok {
+		return
+	}
+
+	logger.Infof(ctx, "Resetting API key for tenant, ID: %d", id)
+	apiKey, err := h.service.UpdateAPIKey(ctx, id)
+	if err != nil {
+		if appErr, ok := errors.IsAppError(err); ok {
+			logger.Error(ctx, "Failed to reset API key: application error", appErr)
+			c.Error(appErr)
+		} else {
+			logger.ErrorWithFields(ctx, err, nil)
+			c.Error(errors.NewInternalServerError("Failed to reset API key").WithDetails(err.Error()))
+		}
+		return
+	}
+
+	logger.Infof(ctx, "API key reset successfully, tenant ID: %d", id)
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data": gin.H{
+			"api_key": apiKey,
+		},
 	})
 }
 
@@ -701,6 +750,8 @@ func (h *TenantHandler) updateTenantWebSearchConfigInternal(c *gin.Context) {
 		return
 	}
 
+	cfg = *types.EffectiveWebSearchConfig(&cfg)
+
 	// Validate configuration
 	if cfg.MaxResults < 1 || cfg.MaxResults > 50 {
 		c.Error(errors.NewBadRequestError("max_results must be between 1 and 50"))
@@ -728,7 +779,7 @@ func (h *TenantHandler) updateTenantWebSearchConfigInternal(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"data":    updatedTenant.WebSearchConfig,
+		"data":    types.EffectiveWebSearchConfig(updatedTenant.WebSearchConfig),
 		"message": "Web search configuration updated successfully",
 	})
 }
@@ -758,7 +809,7 @@ func (h *TenantHandler) GetTenantWebSearchConfig(c *gin.Context) {
 	logger.Infof(ctx, "Tenant web search config retrieved successfully, Tenant ID: %d", tenant.ID)
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"data":    tenant.WebSearchConfig,
+		"data":    types.EffectiveWebSearchConfig(tenant.WebSearchConfig),
 	})
 }
 
@@ -842,6 +893,19 @@ func (h *TenantHandler) updateTenantStorageEngineConfigInternal(c *gin.Context) 
 		c.Error(errors.NewValidationError("Invalid request data").WithDetails(err.Error()))
 		return
 	}
+	provider := strings.ToLower(strings.TrimSpace(cfg.DefaultProvider))
+	if provider == "" {
+		provider = firstAllowedStorageProvider()
+	}
+	if provider == "" {
+		c.Error(errors.NewBadRequestError("No storage provider is allowed by STORAGE_ALLOW_LIST"))
+		return
+	}
+	if !isStorageProviderAllowed(provider) {
+		c.Error(errors.NewBadRequestError("Storage provider is not allowed by STORAGE_ALLOW_LIST"))
+		return
+	}
+	cfg.DefaultProvider = provider
 	tenant, _ := types.TenantInfoFromContext(ctx)
 	if tenant == nil {
 		logger.Error(ctx, "Tenant is empty")

@@ -1,7 +1,9 @@
 <template>
     <div class="main" ref="dropzone">
         <Menu></Menu>
-        <RouterView v-if="isRouterAlive" />
+        <div v-if="isRouterAlive" class="platform-route-outlet">
+            <RouterView />
+        </div>
         <div class="upload-mask" v-show="ismask">
             <input type="file" style="display: none" ref="uploadInput" accept=".pdf,.docx,.doc,.pptx,.ppt,.txt,.md,.jpg,.jpeg,.png,.csv,.xls,.xlsx" />
             <UploadMask></UploadMask>
@@ -57,6 +59,35 @@ let dragCounter = 0;
 // 获取当前知识库ID
 const getCurrentKbId = (): string | null => {
     return (route.params as any)?.kbId as string || null
+}
+
+const CHAT_DROP_ROUTE_NAMES = new Set(['chat', 'globalCreatChat', 'kbCreatChat']);
+
+const isChatDropRoute = () => {
+    return CHAT_DROP_ROUTE_NAMES.has(String(route.name || ''));
+}
+
+const collectDroppedFiles = async (event: DragEvent): Promise<File[]> => {
+    const dataTransferFiles = event.dataTransfer?.files ? Array.from(event.dataTransfer.files) : [];
+    if (dataTransferFiles.length > 0) {
+        return dataTransferFiles;
+    }
+
+    const dataTransferItems = event.dataTransfer?.items ? Array.from(event.dataTransfer.items) : [];
+    if (dataTransferItems.length === 0) {
+        return [];
+    }
+
+    const files = await Promise.all(dataTransferItems.map(item => new Promise<File | null>((resolve) => {
+        const fileEntry = (item as any).webkitGetAsEntry?.();
+        if (fileEntry?.isFile && typeof fileEntry.file === 'function') {
+            fileEntry.file((file: File) => resolve(file), () => resolve(null));
+            return;
+        }
+        resolve(null);
+    })));
+
+    return files.filter((file): file is File => file instanceof File);
 }
 
 // 检查知识库初始化状态
@@ -119,27 +150,27 @@ const handleGlobalDrop = async (event: DragEvent) => {
     event.preventDefault();
     dragCounter = 0;
     ismask.value = false;
-    
-    const DataTransferFiles = event.dataTransfer?.files ? Array.from(event.dataTransfer.files) : [];
-    const DataTransferItemList = event.dataTransfer?.items ? Array.from(event.dataTransfer.items) : [];
+
+    const droppedFiles = await collectDroppedFiles(event);
+    if (droppedFiles.length === 0) {
+        MessagePlugin.warning(t('knowledgeBase.dragFileNotText'));
+        return;
+    }
+
+    if (isChatDropRoute()) {
+        event.stopPropagation();
+        window.dispatchEvent(new CustomEvent('weknora:chat-file-drop', {
+            detail: { files: droppedFiles }
+        }));
+        return;
+    }
     
     const isInitialized = await checkKnowledgeBaseInitialization();
     if (!isInitialized) {
         return;
     }
-    
-    if (DataTransferFiles.length > 0) {
-        DataTransferFiles.forEach(file => requestMethod(file, uploadInput));
-    } else if (DataTransferItemList.length > 0) {
-        DataTransferItemList.forEach(dataTransferItem => {
-            const fileEntry = dataTransferItem.webkitGetAsEntry() as FileSystemFileEntry | null;
-            if (fileEntry) {
-                fileEntry.file((file: File) => requestMethod(file, uploadInput));
-            }
-        });
-    } else {
-        MessagePlugin.warning(t('knowledgeBase.dragFileNotText'));
-    }
+
+    droppedFiles.forEach(file => requestMethod(file, uploadInput));
 }
 
 // 组件挂载时添加全局事件监听器
@@ -177,11 +208,23 @@ onUnmounted(() => {
 <style lang="less">
 .main {
     display: flex;
+    align-items: stretch;
     width: 100%;
     height: 100%;
     min-width: 600px;
+    min-height: 0;
     /* 统一整页背景，让左侧菜单与右侧内容区视觉连贯 */
     background: var(--td-bg-color-container);
+}
+
+/* 右侧路由区：占满剩余宽度与整列高度，并把 min-height:0 传给子页面以便内部 flex 滚动 */
+.platform-route-outlet {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
 }
 
 .upload-mask {

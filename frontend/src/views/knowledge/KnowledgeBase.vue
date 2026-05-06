@@ -413,9 +413,9 @@ const getKnowledgeType = (item: any) => {
   return '--';
 }
 
-const loadKnowledgeFiles = (kbIdValue: string) => {
-  if (!kbIdValue) return;
-  getKnowled(
+const loadKnowledgeFiles = (kbIdValue: string): Promise<void> => {
+  if (!kbIdValue) return Promise.resolve();
+  return getKnowled(
     {
       page: 1,
       page_size: pageSize,
@@ -1632,6 +1632,11 @@ const toggleSelectRow = (id: string, checked: boolean, shiftKey?: boolean) => {
   lastSelectedIndex = idx;
 };
 
+const onCardGridCheckboxChange = (id: string, checked: boolean, ctx?: { e?: Event }) => {
+  const me = ctx?.e as MouseEvent | undefined;
+  toggleSelectRow(id, checked, !!me?.shiftKey);
+};
+
 const toggleSelectAll = (checked: boolean) => {
   if (checked) {
     for (const item of cardList.value || []) selectedIds.value.add(item.id);
@@ -1653,6 +1658,7 @@ const openBatchDeleteDialog = () => {
 const confirmBatchDelete = async () => {
   if (batchDeleting.value || selectedIds.value.size === 0) return;
   const ids = Array.from(selectedIds.value);
+  const deletedIdSet = new Set(ids);
   batchDeleting.value = true;
   try {
     const res: any = await batchDeleteKnowledge(kbId.value, ids);
@@ -1661,7 +1667,15 @@ const confirmBatchDelete = async () => {
       clearSelection();
       batchDeleteDialog.value = false;
       page = 1;
-      loadKnowledgeFiles(kbId.value);
+      // 后端将批量删除放入异步队列，立刻拉列表仍可能包含待删项；短轮询直到列表与后端一致或超时
+      const maxPolls = 30;
+      const delayMs = 400;
+      for (let i = 0; i < maxPolls; i++) {
+        await loadKnowledgeFiles(kbId.value);
+        const stillPresent = (cardList.value || []).some((c: KnowledgeCard) => deletedIdSet.has(c.id));
+        if (!stillPresent) break;
+        await new Promise<void>((r) => setTimeout(r, delayMs));
+      }
       loadTags(kbId.value);
     } else {
       MessagePlugin.error(res?.message || t('knowledgeBase.batchDeleteFailed'));
@@ -1690,10 +1704,18 @@ watch([selectedTagId, docSearchKeyword, selectedFileType, kbId], () => {
   clearSelection();
 });
 
-// After cardList reloads, drop ids that are no longer present.
+// After cardList reloads: stable keys rely on correct indices for shift-range; clamp anchor index.
 watch(cardList, () => {
+  const items = cardList.value || [];
+  const n = items.length;
+  if (lastSelectedIndex >= n) {
+    lastSelectedIndex = n > 0 ? n - 1 : -1;
+  }
+  if (moreIndex.value >= n) {
+    moreIndex.value = -1;
+  }
   if (selectedIds.value.size === 0) return;
-  const visible = new Set((cardList.value || []).map((i: KnowledgeCard) => i.id));
+  const visible = new Set(items.map((i: KnowledgeCard) => i.id));
   for (const id of selectedIds.value) {
     if (!visible.has(id)) selectedIds.value.delete(id);
   }
@@ -2144,27 +2166,28 @@ async function createNewSession(value: string): Promise<void> {
                     class="knowledge-card"
                     :class="{ 'is-selected': selectedIds.has(item.id), 'has-selection': selectedIds.size > 0 }"
                     v-for="(item, index) in cardList"
-                    :key="index"
+                    :key="item.id"
                     @click="openCardDetails(item)"
                     @mouseenter="onCardMouseEnter($event, item)"
                     @mousemove="onCardMouseMove($event)"
                     @mouseleave="onCardMouseLeave"
                   >
-                    <label
-                      v-if="canEdit"
-                      class="card-select-overlay"
-                      :class="{ active: selectedIds.has(item.id) }"
-                      @click.stop
-                    >
-                      <input
-                        type="checkbox"
-                        :checked="selectedIds.has(item.id)"
-                        @click.stop="(e: MouseEvent) => toggleSelectRow(item.id, !selectedIds.has(item.id), e.shiftKey)"
-                        :aria-label="item.file_name"
-                      />
-                    </label>
                     <div class="card-content">
                       <div class="card-content-nav">
+                        <div
+                          v-if="canEdit"
+                          class="card-nav-check"
+                          :class="{ active: selectedIds.has(item.id) }"
+                          @click.stop
+                        >
+                          <t-checkbox
+                            class="card-select-checkbox"
+                            size="small"
+                            :checked="selectedIds.has(item.id)"
+                            :title="item.file_name"
+                            @change="(checked, ctx) => onCardGridCheckboxChange(item.id, checked, ctx)"
+                          />
+                        </div>
                         <span class="card-content-title" :title="item.file_name">{{ item.file_name }}</span>
                         <t-popup
                           v-if="canEdit"
@@ -2388,6 +2411,8 @@ async function createNewSession(value: string): Promise<void> {
                   <EmptyKnowledge />
                 </div>
               </template>
+            </div>
+            <div class="doc-batch-bar-anchor" v-show="selectedIds.size > 0">
               <DocumentBatchBar
                 :count="selectedIds.size"
                 :loading="batchDeleting"
@@ -2544,7 +2569,7 @@ async function createNewSession(value: string): Promise<void> {
   flex: 1;
   width: 100%;
   min-width: 0;
-  padding: 24px 32px 32px;
+  padding: 24px 32px 0px;
   box-sizing: border-box;
 }
 
@@ -2722,7 +2747,7 @@ async function createNewSession(value: string): Promise<void> {
       color: var(--td-text-color-primary);
       cursor: pointer;
       transition: all 0.2s ease;
-      font-family: "PingFang SC", -apple-system, BlinkMacSystemFont, sans-serif;
+      font-family: var(--app-font-family);
       font-size: 13px;
       -webkit-font-smoothing: antialiased;
 
@@ -2745,7 +2770,7 @@ async function createNewSession(value: string): Promise<void> {
         }
 
         .tag-hash-icon {
-          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+          font-family: var(--app-font-family-mono);
           font-size: 16px;
           font-weight: 500;
           width: 16px;
@@ -2760,7 +2785,7 @@ async function createNewSession(value: string): Promise<void> {
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
-        font-family: "PingFang SC", -apple-system, BlinkMacSystemFont, sans-serif;
+        font-family: var(--app-font-family);
         font-size: 13px;
         font-weight: 400;
         line-height: 1.4;
@@ -2954,7 +2979,7 @@ async function createNewSession(value: string): Promise<void> {
   cursor: pointer;
   transition: all 0.2s ease;
   color: var(--td-text-color-primary);
-  font-family: 'PingFang SC';
+  font-family: var(--app-font-family);
   font-size: 14px;
   font-weight: 400;
 
@@ -2999,6 +3024,7 @@ async function createNewSession(value: string): Promise<void> {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  position: relative; /* 作为批量工具栏悬浮的定位上下文 */
 }
 
 .doc-filter-bar {
@@ -3109,6 +3135,23 @@ async function createNewSession(value: string): Promise<void> {
     align-items: center;
     justify-content: center;
     overflow-y: hidden;
+  }
+}
+
+/* 批量条悬浮在滚动区底部，不挤占列表高度 */
+.doc-batch-bar-anchor {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 12px;
+  z-index: 6;
+  display: flex;
+  justify-content: center;
+  padding: 0 16px;
+  pointer-events: none;
+
+  & > * {
+    pointer-events: auto;
   }
 }
 
@@ -3224,7 +3267,7 @@ async function createNewSession(value: string): Promise<void> {
   h2 {
     margin: 0;
     color: var(--td-text-color-primary);
-    font-family: "PingFang SC";
+    font-family: var(--app-font-family);
     font-size: 24px;
     font-weight: 600;
     line-height: 32px;
@@ -3233,7 +3276,7 @@ async function createNewSession(value: string): Promise<void> {
   .document-subtitle {
     margin: 0;
     color: var(--td-text-color-placeholder);
-    font-family: "PingFang SC";
+    font-family: var(--app-font-family);
     font-size: 14px;
     font-weight: 400;
     line-height: 20px;
@@ -3388,6 +3431,7 @@ async function createNewSession(value: string): Promise<void> {
 
 .faq-manager-wrapper {
   flex: 1;
+  min-height: 0;
   padding: 24px 32px;
   overflow-y: auto;
   margin: 0 16px 0 4px;
@@ -3442,7 +3486,7 @@ async function createNewSession(value: string): Promise<void> {
   box-sizing: border-box;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(248px, 1fr));
-  gap: 14px;
+  gap: 16px;
   align-content: flex-start;
   width: 100%;
 
@@ -3453,14 +3497,24 @@ async function createNewSession(value: string): Promise<void> {
 
 .knowledge-card-skeleton {
   cursor: default;
-  .card-content { padding: 15px 17px 13px; }
-  .card-content-nav { margin-bottom: 14px; }
+
+  .card-content {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    padding: 12px 16px 8px;
+  }
+
+  .card-content-nav {
+    margin-bottom: 8px;
+  }
+
   .card-bottom {
-    position: absolute;
-    bottom: 0;
-    left: 0;
+    flex-shrink: 0;
+    margin-top: auto;
     width: 100%;
-    padding: 0 17px;
+    padding: 0 16px;
     box-sizing: border-box;
     height: 34px;
     display: flex;
@@ -3517,7 +3571,7 @@ async function createNewSession(value: string): Promise<void> {
 
   .circle-title {
     color: var(--td-text-color-primary);
-    font-family: "PingFang SC";
+    font-family: var(--app-font-family);
     font-size: 16px;
     font-weight: 600;
     line-height: 24px;
@@ -3525,7 +3579,7 @@ async function createNewSession(value: string): Promise<void> {
 
   .del-circle-txt {
     color: var(--td-text-color-placeholder);
-    font-family: "PingFang SC";
+    font-family: var(--app-font-family);
     font-size: 14px;
     font-weight: 400;
     line-height: 22px;
@@ -3543,7 +3597,7 @@ async function createNewSession(value: string): Promise<void> {
 
   .circle-btn-txt {
     color: var(--td-text-color-primary);
-    font-family: "PingFang SC";
+    font-family: var(--app-font-family);
     font-size: 14px;
     font-weight: 400;
     line-height: 22px;
@@ -3747,6 +3801,7 @@ async function createNewSession(value: string): Promise<void> {
   align-items: center;
   gap: 8px;
   padding: 6px 0;
+  flex-shrink: 0;
 }
 
 .card-draft-tip {
@@ -3756,65 +3811,82 @@ async function createNewSession(value: string): Promise<void> {
 
 .knowledge-card {
   min-width: 248px;
-  border: 1px solid var(--td-component-stroke);
+  display: flex;
+  flex-direction: column;
+  border: 1px solid color-mix(in srgb, var(--td-component-stroke) 82%, var(--td-bg-color-secondarycontainer));
   height: 148px;
   border-radius: 9px;
   overflow: hidden;
   box-sizing: border-box;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.035);
   background: var(--td-bg-color-container);
   position: relative;
   cursor: pointer;
   transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
 
-  &.is-selected {
-    border-color: var(--td-brand-color, #0052d9);
-    box-shadow: 0 0 0 1px var(--td-brand-color, #0052d9), 0 4px 12px rgba(0, 82, 217, 0.08);
-    background: var(--td-brand-color-1, #f0f6ff);
-  }
-
-  .card-select-overlay {
-    position: absolute;
-    top: 8px;
-    left: 8px;
-    width: 22px;
-    height: 22px;
+  /* 默认折叠不占位，悬停/多选/已选时展开，避免非选择态左侧错位 */
+  .card-nav-check {
+    flex-shrink: 0;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    background: var(--td-bg-color-container, #fff);
-    border: 1px solid var(--td-component-border, #e0e0e0);
-    border-radius: 6px;
-    cursor: pointer;
+    width: 0;
+    height: 29px;
+    margin-right: 0;
     opacity: 0;
-    transition: opacity 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
-    z-index: 1;
+    overflow: hidden;
+    transition: width 0.2s ease, margin-right 0.2s ease, opacity 0.2s ease;
+    cursor: pointer;
 
-    input[type='checkbox'] {
-      width: 14px;
-      height: 14px;
-      margin: 0;
-      cursor: pointer;
-      accent-color: var(--td-brand-color, #0052d9);
+    &.active {
+      width: 22px;
+      margin-right: 8px;
+      opacity: 1;
     }
 
-    &.active,
-    &:focus-within {
-      opacity: 1;
-      border-color: var(--td-brand-color, #0052d9);
+    .card-select-checkbox {
+      margin: 0;
+      line-height: 0;
+
+      :deep(.t-checkbox) {
+        align-items: center;
+      }
+
+      :deep(.t-checkbox__label) {
+        display: none !important;
+        width: 0 !important;
+        min-width: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+      }
+
+      :deep(.t-checkbox__input) {
+        margin: 0;
+      }
+
+      :deep(.t-checkbox__input-wrapper) {
+        margin: 0;
+      }
     }
   }
 
-  &:hover .card-select-overlay,
-  &.has-selection .card-select-overlay {
+  &:hover .card-nav-check,
+  &.has-selection .card-nav-check {
+    width: 22px;
+    margin-right: 8px;
     opacity: 1;
   }
 
   .card-content {
-    padding: 15px 17px 13px;
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    padding: 12px 16px 8px;
   }
 
   .card-analyze {
+    flex-shrink: 0;
     height: 52px;
     display: flex;
   }
@@ -3828,7 +3900,7 @@ async function createNewSession(value: string): Promise<void> {
 
   .card-analyze-txt {
     color: var(--td-brand-color);
-    font-family: "PingFang SC";
+    font-family: var(--app-font-family);
     font-size: 11px;
     margin-left: 8px;
   }
@@ -3838,11 +3910,11 @@ async function createNewSession(value: string): Promise<void> {
   }
 
   .card-content-nav {
+    flex-shrink: 0;
     display: flex;
-    justify-content: space-between;
     align-items: flex-start;
-    margin-bottom: 11px;
-    gap: 8px;
+    gap: 0;
+    margin-bottom: 8px;
   }
 
   .card-content-title {
@@ -3855,10 +3927,11 @@ async function createNewSession(value: string): Promise<void> {
     text-overflow: ellipsis;
     white-space: nowrap;
     color: var(--td-text-color-primary);
-    font-family: "PingFang SC", -apple-system, sans-serif;
+    font-family: var(--app-font-family);
     font-size: 15px;
     font-weight: 600;
     letter-spacing: 0.01em;
+    margin-right: 8px;
   }
 
   .more-wrap {
@@ -3886,22 +3959,24 @@ async function createNewSession(value: string): Promise<void> {
   }
 
   .card-content-txt {
+    flex: 1;
+    min-height: 0;
     display: -webkit-box;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
     line-clamp: 2;
     overflow: hidden;
     color: var(--td-text-color-secondary);
-    font-family: "PingFang SC";
+    font-family: var(--app-font-family);
     font-size: 12px;
     font-weight: 400;
     line-height: 19px;
   }
 
   .card-bottom {
-    position: absolute;
-    bottom: 0;
-    padding: 0 17px;
+    flex-shrink: 0;
+    margin-top: auto;
+    padding: 0 16px;
     box-sizing: border-box;
     height: 34px;
     width: 100%;
@@ -3914,25 +3989,25 @@ async function createNewSession(value: string): Promise<void> {
 
   .card-time {
     color: var(--td-text-color-secondary);
-    font-family: "PingFang SC";
+    font-family: var(--app-font-family);
     font-size: 12px;
     font-weight: 400;
   }
 
   .card-type {
-    color: var(--td-text-color-secondary);
-    font-family: "PingFang SC";
+    color: var(--td-text-color-placeholder);
+    font-family: var(--app-font-family);
     font-size: 11px;
     font-weight: 500;
-    padding: 3px 8px;
-    background: var(--td-bg-color-secondarycontainer);
-    border-radius: 4px;
+    padding: 0;
+    background: transparent;
+    letter-spacing: 0.02em;
   }
 }
 
 .knowledge-card:hover {
-  border-color: var(--td-brand-color);
-  box-shadow: 0 2px 8px rgba(7, 192, 95, 0.12);
+  border-color: color-mix(in srgb, var(--td-component-stroke) 55%, var(--td-brand-color));
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.07);
 }
 
 /* 悬停知识卡片时跟随鼠标的详情气泡 */
@@ -3947,7 +4022,7 @@ async function createNewSession(value: string): Promise<void> {
   border: 1px solid var(--td-component-stroke);
   border-radius: 8px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
-  font-family: "PingFang SC", -apple-system, sans-serif;
+  font-family: var(--app-font-family);
   transition: opacity 0.15s ease;
 
   .card-popover-title {
@@ -4091,7 +4166,7 @@ async function createNewSession(value: string): Promise<void> {
 
 .knowledge-card-upload {
   color: var(--td-text-color-primary);
-  font-family: "PingFang SC";
+  font-family: var(--app-font-family);
   font-size: 14px;
   font-weight: 400;
   cursor: pointer;
@@ -4114,7 +4189,7 @@ async function createNewSession(value: string): Promise<void> {
 
 .upload-described {
   color: var(--td-text-color-disabled);
-  font-family: "PingFang SC";
+  font-family: var(--app-font-family);
   font-size: 12px;
   font-weight: 400;
   text-align: center;

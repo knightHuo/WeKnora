@@ -95,8 +95,26 @@
 
     <!-- 卡片网格：全部 -->
     <div v-if="spaceSelection === 'all' && filteredKnowledgeBases.length > 0" class="kb-card-wrap">
+      <!-- 置顶分组标题 -->
+      <div
+        v-if="filteredKnowledgeBases[0] && filteredKnowledgeBases[0].isMine && filteredKnowledgeBases[0].is_pinned"
+        class="kb-section-header kb-section-header-pinned"
+      >
+        <t-icon name="pin-filled" size="14px" />
+        <span>{{ $t('knowledgeList.sections.pinned') }}</span>
+      </div>
       <!-- 全部：我的知识库 + 共享给我的知识库 -->
-      <template v-for="kb in filteredKnowledgeBases" :key="kb.id">
+      <template v-for="(kb, index) in filteredKnowledgeBases" :key="kb.id">
+        <!-- 「其他」分组标题：从置顶过渡到非置顶时插入 -->
+        <div
+          v-if="index > 0
+            && filteredKnowledgeBases[index - 1].isMine
+            && filteredKnowledgeBases[index - 1].is_pinned
+            && !(kb.isMine && kb.is_pinned)"
+          class="kb-section-header"
+        >
+          <span>{{ $t('knowledgeList.sections.others') }}</span>
+        </div>
         <!-- 我的知识库卡片 -->
         <div
           v-if="kb.isMine"
@@ -262,10 +280,21 @@
     </div>
 
     <div v-if="spaceSelection === 'mine' && kbs.length > 0" class="kb-card-wrap">
+      <!-- 置顶分组标题 -->
+      <div v-if="kbs[0] && kbs[0].is_pinned" class="kb-section-header kb-section-header-pinned">
+        <t-icon name="pin-filled" size="14px" />
+        <span>{{ $t('knowledgeList.sections.pinned') }}</span>
+      </div>
       <!-- 我的知识库 -->
+      <template v-for="(kb, index) in kbs" :key="kb.id">
+        <!-- 「其他」分组标题：从置顶过渡到非置顶时插入 -->
+        <div
+          v-if="index > 0 && kbs[index - 1].is_pinned && !kb.is_pinned"
+          class="kb-section-header"
+        >
+          <span>{{ $t('knowledgeList.sections.others') }}</span>
+        </div>
       <div
-        v-for="(kb, index) in kbs"
-        :key="kb.id"
         class="kb-card"
         :class="{
           'uninitialized': !isInitialized(kb),
@@ -367,6 +396,7 @@
           </div>
         </div>
       </div>
+      </template>
     </div>
 
     <!-- 卡片网格：共享给我 -->
@@ -1255,7 +1285,7 @@ const handleUploadFinishedEvent = (event: Event) => {
   h2 {
     margin: 0;
     color: var(--td-text-color-primary);
-    font-family: "PingFang SC";
+    font-family: var(--app-font-family);
     font-size: 24px;
     font-weight: 600;
     line-height: 32px;
@@ -1304,7 +1334,7 @@ const handleUploadFinishedEvent = (event: Event) => {
 .header-subtitle {
   margin: 0;
   color: var(--td-text-color-placeholder);
-  font-family: "PingFang SC";
+  font-family: var(--app-font-family);
   font-size: 14px;
   font-weight: 400;
   line-height: 20px;
@@ -1349,7 +1379,7 @@ const handleUploadFinishedEvent = (event: Event) => {
     padding: 12px 0;
     cursor: pointer;
     color: var(--td-text-color-secondary);
-    font-family: "PingFang SC";
+    font-family: var(--app-font-family);
     font-size: 14px;
     font-weight: 400;
     user-select: none;
@@ -1525,7 +1555,7 @@ const handleUploadFinishedEvent = (event: Event) => {
   border: 1px solid var(--td-warning-color-focus);
   border-radius: 6px;
   color: var(--td-warning-color);
-  font-family: "PingFang SC";
+  font-family: var(--app-font-family);
   font-size: 14px;
   
   .t-icon {
@@ -1564,7 +1594,7 @@ const handleUploadFinishedEvent = (event: Event) => {
 
 .progress-title {
   color: var(--td-text-color-primary);
-  font-family: "PingFang SC";
+  font-family: var(--app-font-family);
   font-size: 14px;
   font-weight: 600;
   line-height: 22px;
@@ -1573,7 +1603,7 @@ const handleUploadFinishedEvent = (event: Event) => {
 
 .progress-subtitle {
   color: var(--td-text-color-secondary);
-  font-family: "PingFang SC";
+  font-family: var(--app-font-family);
   font-size: 12px;
   line-height: 18px;
 }
@@ -1613,6 +1643,27 @@ const handleUploadFinishedEvent = (event: Event) => {
   gap: 20px;
   grid-template-columns: 1fr;
   animation: contentFadeIn 0.32s ease-out;
+}
+
+.kb-section-header {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0 4px;
+  color: var(--td-text-color-secondary);
+  font-family: var(--app-font-family);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 20px;
+
+  .t-icon {
+    color: var(--td-brand-color);
+  }
+
+  &.kb-section-header-pinned {
+    color: var(--td-brand-color);
+  }
 }
 
 .kb-card {
@@ -1796,7 +1847,7 @@ const handleUploadFinishedEvent = (event: Event) => {
 
 .card-title {
   color: var(--td-text-color-primary);
-  font-family: "PingFang SC", -apple-system, sans-serif;
+  font-family: var(--app-font-family);
   font-size: 15px;
   font-weight: 600;
   line-height: 22px;
@@ -1858,7 +1909,7 @@ const handleUploadFinishedEvent = (event: Event) => {
   line-clamp: 2;
   overflow: hidden;
   color: var(--td-text-color-secondary);
-  font-family: "PingFang SC", -apple-system, sans-serif;
+  font-family: var(--app-font-family);
   font-size: 12px;
   font-weight: 400;
   line-height: 18px;
@@ -2050,7 +2101,7 @@ const handleUploadFinishedEvent = (event: Event) => {
 
 .card-time {
   color: var(--td-text-color-placeholder);
-  font-family: "PingFang SC";
+  font-family: var(--app-font-family);
   font-size: 12px;
   font-weight: 400;
 }
@@ -2072,7 +2123,7 @@ const handleUploadFinishedEvent = (event: Event) => {
 
   .empty-txt {
     color: var(--td-text-color-placeholder);
-    font-family: "PingFang SC";
+    font-family: var(--app-font-family);
     font-size: 16px;
     font-weight: 600;
     line-height: 26px;
@@ -2081,7 +2132,7 @@ const handleUploadFinishedEvent = (event: Event) => {
 
   .empty-desc {
     color: var(--td-text-color-disabled);
-    font-family: "PingFang SC";
+    font-family: var(--app-font-family);
     font-size: 14px;
     font-weight: 400;
     line-height: 22px;
@@ -2149,7 +2200,7 @@ const handleUploadFinishedEvent = (event: Event) => {
 
   .circle-title {
     color: var(--td-text-color-primary);
-    font-family: "PingFang SC";
+    font-family: var(--app-font-family);
     font-size: 16px;
     font-weight: 600;
     line-height: 24px;
@@ -2157,7 +2208,7 @@ const handleUploadFinishedEvent = (event: Event) => {
 
   .del-circle-txt {
     color: var(--td-text-color-placeholder);
-    font-family: "PingFang SC";
+    font-family: var(--app-font-family);
     font-size: 14px;
     font-weight: 400;
     line-height: 22px;
@@ -2175,7 +2226,7 @@ const handleUploadFinishedEvent = (event: Event) => {
 
   .circle-btn-txt {
     color: var(--td-text-color-primary);
-    font-family: "PingFang SC";
+    font-family: var(--app-font-family);
     font-size: 14px;
     font-weight: 400;
     line-height: 22px;
@@ -2211,7 +2262,7 @@ const handleUploadFinishedEvent = (event: Event) => {
   background: transparent;
   color: var(--td-brand-color);
   font-size: 13px;
-  font-family: "PingFang SC", sans-serif;
+  font-family: var(--app-font-family);
   cursor: pointer;
   transition: background 0.2s ease, color 0.2s ease;
 
@@ -2246,7 +2297,7 @@ const handleUploadFinishedEvent = (event: Event) => {
   box-shadow: -4px 0 24px rgba(0, 0, 0, 0.12);
   display: flex;
   flex-direction: column;
-  font-family: "PingFang SC", sans-serif;
+  font-family: var(--app-font-family);
 }
 
 .shared-detail-drawer-header {
@@ -2367,7 +2418,7 @@ const handleUploadFinishedEvent = (event: Event) => {
 // 创建对话框样式优化
 .create-kb-dialog {
   .t-form-item__label {
-    font-family: "PingFang SC";
+    font-family: var(--app-font-family);
     font-size: 14px;
     font-weight: 500;
     color: var(--td-text-color-primary);
@@ -2375,7 +2426,7 @@ const handleUploadFinishedEvent = (event: Event) => {
 
   .t-input,
   .t-textarea {
-    font-family: "PingFang SC";
+    font-family: var(--app-font-family);
   }
 
   .t-button--theme-primary {

@@ -18,11 +18,17 @@
     <a href="https://chatbot.weixin.qq.com" target="_blank">
         <img alt="WeChat 대화 오픈 플랫폼" src="https://img.shields.io/badge/WeChat_대화_오픈_플랫폼-5ac725">
     </a>
+    <a href="https://chromewebstore.google.com/detail/jpemjbopikggjlmikmclgbmkhhopjdgd" target="_blank">
+        <img alt="Chrome 확장 프로그램" src="https://img.shields.io/badge/Chrome_확장_프로그램-WeKnora-4285F4">
+    </a>
+    <a href="https://clawhub.ai/lyingbug/weknora" target="_blank">
+        <img alt="ClawHub Skill" src="https://img.shields.io/badge/ClawHub_Skill-WeKnora-ff6b35">
+    </a>
     <a href="https://github.com/Tencent/WeKnora/blob/main/LICENSE">
         <img src="https://img.shields.io/badge/License-MIT-ffffff?labelColor=d4eaf7&color=2e6cc4" alt="License">
     </a>
     <a href="./CHANGELOG.md">
-        <img alt="버전" src="https://img.shields.io/badge/version-0.5.0-2e6cc4?labelColor=d4eaf7">
+        <img alt="버전" src="https://img.shields.io/badge/version-0.5.1-2e6cc4?labelColor=d4eaf7">
     </a>
 </p>
 
@@ -50,16 +56,17 @@ Feishu, Notion, Yuque 등 외부 플랫폼에서 지식 자동 동기화를 지�
 
 ## ✨ 최신 업데이트
 
-**v0.5.0 하이라이트:**
+**v0.5.1 하이라이트:**
 
-- **Wiki 모드**: Agent 기반의 새로운 Wiki 지식 체계를 도입했습니다. 원본 문서에서 상호 연결된 마크다운 페이지를 자동으로 정리·생성하고, 전용 Wiki 브라우저와 함께 페이지 간 참조 및 연관 관계를 시각화하는 인터랙티브 지식 그래프를 제공하여, 팀 전용으로 구조화되고 지속적으로 진화하는 지식 베이스를 구축할 수 있도록 돕습니다.
-- **관측 가능성(Observability)**: Langfuse를 통합하여 Agent의 ReAct 루프, LLM 토큰 추적, 도구 호출 및 asynq 파이프라인을 심층적으로 추적하여 Agent 추론 및 시스템 성능을 완벽하게 파악할 수 있습니다.
-- **사용자 정의 인덱싱 전략**: 사용자는 이제 지식베이스 수준에서 벡터 검색, 키워드 검색(하이브리드), Wiki 및 지식 그래프(Knowledge Graph) 인덱싱을 독립적으로 설정하고 전환할 수 있습니다.
-- **벡터 데이터베이스 UI 및 지식베이스 바인딩**: 연결 테스트가 포함된 벡터 데이터베이스 관리를 위한 프론트엔드 UI가 추가되었으며, 특정 지식베이스에 고유한 벡터 데이터베이스를 바인딩할 수 있는 기능이 지원됩니다.
-- **Yuque 커넥터**: API 클라이언트를 통한 Yuque 데이터 소스 통합으로 전체 및 증분 동기화를 지원하여 Yuque 문서를 원활하게 가져옵니다.
-- **Agent 기능 강화**: 잘못된 JSON 출력을 자동으로 수정하는 `json_repair` 도구가 추가되었으며, `OpenMAIC Classroom` 스킬이 사전 탑재되고, DuckDB 데이터 분석에서 Excel의 모든 시트를 로드하도록 지원이 강화되었습니다.
-- **프론트엔드 및 디버깅**: 설정의 모델 카드에 복사 작업이 추가되었으며, 모든 모델 프로바이더에 걸쳐 LLM 요청 디버깅(`llm_debug`) 및 로깅 메커니즘이 크게 향상되었습니다.
-- **버그 수정**: DuckDB 액세스 문제 수정(지식 파일을 임시 경로에 구체화), Wiki 전용 Agent의 Rerank 모델 요구 사항 제거, dockerignore에 오프라인 protoc zip 패키지 허용 목록 추가.
+- **Wiki 모드**: Agent 기반의 Wiki 지식 체계. 원본 문서에서 상호 연결된 마크다운 페이지를 자동으로 정리·생성하고, 전용 Wiki 브라우저와 페이지 간 참조·연관을 시각화하는 인터랙티브 지식 그래프를 제공하여, 팀 전용 지식 베이스를 구조화하고 지속적으로 진화시킬 수 있도록 돕습니다.
+- **관측 가능성(Observability)**: Langfuse를 통합하여 Agent의 ReAct 루프, LLM 토큰 추적, 도구 호출 및 asynq 파이프라인을 심층적으로 추적해 Agent 추론과 시스템 성능을 완벽하게 파악할 수 있습니다.
+- **사용자 정의 인덱싱 전략**: 지식베이스 수준에서 벡터 검색, 키워드 검색(하이브리드), Wiki 및 지식 그래프 인덱싱을 독립적으로 설정·전환할 수 있습니다.
+- **벡터 데이터베이스 UI 및 KB 바인딩**: 연결 테스트가 포함된 벡터 DB 관리 프론트엔드 UI를 추가했으며, 특정 지식베이스에 고유한 벡터 DB를 바인딩할 수 있습니다.
+- **Yuque 커넥터**: API 클라이언트 기반 Yuque 데이터 소스 통합. 전체·증분 동기화를 지원하여 Yuque 문서를 원활하게 가져옵니다.
+- **WeChat 미니프로그램**: 새 경량 모바일 클라이언트(`miniprogram/`)를 통해 WeChat에서 WeKnora API 설정, 지식베이스 선택, URL 가져오기 및 지식 채팅을 바로 사용할 수 있습니다.
+- **지식베이스 리스트 뷰 및 일괄 작업**: 카드 뷰와 함께 사용할 수 있는 리스트 뷰, 다중 선택, 플로팅 일괄 작업 바, 일괄 삭제를 지원해 대규모 지식베이스 관리를 효율화합니다.
+- **세션과 IM 워크플로 강화**: 사용자 메뉴 아래 테넌트 전체 IM 채널 개요, 대화 목록 키워드 검색, 사용자 단위 세션 고정, IM 채널에서 시작된 대화에 대한 명확한 출처 표시를 추가했습니다.
+- **버그 수정**: 스트리밍 응답 중 LaTeX 수식이 잠깐 보였다가 사라지는 문제 (#1056), DOCX 파싱의 기본 100페이지 제한, 다중 라운드 IM Agent 추론을 끊는 파이프라인 단위 타임아웃, Agent 단위 IM 세션 격리, Wiki 인제스트의 잘못된 JSON으로 인한 무성한 데이터 손실, 암호화 필드 복호화 실패 시 무성한 빈 응답 등 주요 이슈를 수정했습니다.
 
 <details>
 <summary><b>이전 릴리스</b></summary>

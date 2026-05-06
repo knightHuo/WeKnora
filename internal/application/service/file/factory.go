@@ -47,7 +47,8 @@ func NewFileServiceFromStorageConfig(
 				}
 			}
 		}
-		return NewLocalFileService(baseDir), p, nil
+		externalURL := strings.TrimSpace(os.Getenv("APP_EXTERNAL_URL"))
+		return NewLocalFileService(baseDir, externalURL), p, nil
 
 	case "minio":
 		if sec == nil || sec.MinIO == nil {
@@ -123,6 +124,17 @@ func NewFileServiceFromStorageConfig(
 				sec.OSS.BucketName, pathPrefix,
 			)
 		}
+		return svc, p, err
+
+	case "ks3":
+		if sec == nil || sec.KS3 == nil || sec.KS3.Endpoint == "" || sec.KS3.Region == "" || sec.KS3.AccessKey == "" || sec.KS3.SecretKey == "" || sec.KS3.BucketName == "" {
+			return nil, p, fmt.Errorf("incomplete ks3 config")
+		}
+		pathPrefix := strings.TrimSpace(sec.KS3.PathPrefix)
+		if pathPrefix == "" {
+			pathPrefix = "weknora/"
+		}
+		svc, err := NewKS3FileService(sec.KS3.Endpoint, sec.KS3.Region, sec.KS3.AccessKey, sec.KS3.SecretKey, sec.KS3.BucketName, pathPrefix)
 		return svc, p, err
 
 	default:

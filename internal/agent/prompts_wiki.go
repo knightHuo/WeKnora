@@ -5,12 +5,16 @@ package agent
 // knowledge from raw documents and build/update wiki pages.
 
 // WikiSummaryPrompt generates a summary page for a newly ingested document.
+//
+// Filename and title are intentionally NOT passed to the LLM: documents
+// uploaded to WeKnora often carry filenames that say nothing about the
+// content (e.g. scanned PDFs named after the scanner model "MX5280.pdf"),
+// and feeding such filenames to the model invites hallucinated summaries
+// when the actual extracted content is thin. The model must rely solely on
+// the document content provided below.
 const WikiSummaryPrompt = `You are a wiki editor. Given the following document content, create a structured wiki summary page in Markdown format.
 
 <document>
-<title>{{.Title}}</title>
-<file_name>{{.FileName}}</file_name>
-<file_type>{{.FileType}}</file_type>
 <content>
 {{.Content}}
 </content>
@@ -30,6 +34,7 @@ const WikiSummaryPrompt = `You are a wiki editor. Given the following document c
 7. At the end, include a "## Key Takeaways" section with bullet points.
 8. Write in {{.Language}}.
 9. Keep the summary concise but thorough (500-1500 words depending on document length).
+10. **Empty content rule**: If the <content> block above is empty, contains only image references with no extracted text, or otherwise carries no substantive information, output exactly: "SUMMARY: No textual content was extractable from this document." followed by a brief note explaining that the document could not be summarised. Do NOT invent a topic, do NOT guess from any other clue.
 </instructions>
 
 Output the SUMMARY line first, then the Markdown content. Do not include any other preamble.`
@@ -40,7 +45,6 @@ Output the SUMMARY line first, then the Markdown content. Do not include any oth
 const WikiKnowledgeExtractPrompt = `You are a knowledge extraction system. Analyze the following document and extract all significant entities AND key concepts.
 
 <document>
-<title>{{.Title}}</title>
 <content>
 {{.Content}}
 </content>
@@ -53,6 +57,8 @@ const WikiKnowledgeExtractPrompt = `You are a knowledge extraction system. Analy
 <instructions>
 Return a JSON object with two arrays: "entities" and "concepts".
 **IMPORTANT: Write ALL names, descriptions, and details in {{.Language}}**.
+
+If the <content> block above is empty, contains only image references with no extracted text, or otherwise carries no substantive information, return {"entities": [], "concepts": []}. Do NOT invent entities or concepts from any other source.
 
 ### Slug Continuity Rules
 If previous slugs are provided above, you MUST follow these rules:
@@ -121,7 +127,6 @@ Output ONLY valid JSON. Example:
 const WikiCandidateSlugPrompt = `You are a knowledge extraction system. Analyze the following document and list all significant entities AND key concepts as a lightweight candidate set. Another pass will later attach concrete supporting chunks to each item, so you do NOT need to write exhaustive per-item facts here.
 
 <document>
-<title>{{.Title}}</title>
 <content>
 {{.Content}}
 </content>
@@ -134,6 +139,8 @@ const WikiCandidateSlugPrompt = `You are a knowledge extraction system. Analyze 
 <instructions>
 Return a JSON object with two arrays: "entities" and "concepts".
 **IMPORTANT: Write ALL names, descriptions, and details in {{.Language}}**.
+
+If the <content> block above is empty, contains only image references with no extracted text, or otherwise carries no substantive information, return {"entities": [], "concepts": []}. Do NOT invent entities or concepts from any other source.
 
 ### Extraction Scope (Granularity: {{.Granularity}})
 {{.GranularityGuidance}}
@@ -202,8 +209,6 @@ Output ONLY valid JSON. Example:
 // their verbatim form (the chunk text) instead of asking the LLM to paraphrase.
 const WikiChunkCitationPrompt = `You are a precise citation system. Your job is to scan a batch of document chunks and decide, for each candidate entity/concept below, which chunks substantively discuss it.
 
-<document_title>{{.DocTitle}}</document_title>
-
 <candidate_slugs>
 {{.CandidateSlugs}}
 </candidate_slugs>
@@ -260,6 +265,11 @@ If nothing in this batch is cite-worthy, return: {"citations": {}, "new_slugs": 
 
 // WikiPageModifyPrompt updates an existing wiki page with new additions and removes stale/deleted information in a single pass.
 const WikiPageModifyPrompt = `You are a wiki editor tasked with updating an existing wiki page. You must process a set of NEW information to add, AND/OR a set of deleted documents whose exclusive contributions must be REMOVED.
+
+### STRICT CITATION & MERGE RULES (CRITICAL):
+1. **Preserve Citations:** When merging new information with existing content, you MUST strictly preserve all existing inline chunk citations (e.g., [c003]). 
+2. **Mandatory Tracing:** Any newly added factual claim, entity, or numerical data MUST be followed by an inline citation to the appropriate new source chunk (e.g., [c003]). 
+3. **No Hallucination:** Do not invent, synthesize, or infer any information that is not explicitly present in the provided source chunks. If the new chunks clearly and directly supersede or contradict existing content, update the main text to reflect the newer cited information AND add a brief "Contradictions / Updates" section summarizing the change. If the conflict is ambiguous, unresolved, or not directly supported by the provided chunks, do not overwrite the existing content; instead, add only a "Contradictions / Updates" section describing the conflict with citations.
 
 <page_metadata>
   <slug>{{.PageSlug}}</slug>

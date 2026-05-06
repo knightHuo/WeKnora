@@ -150,13 +150,16 @@ func (t *Tenant) BeforeSave(tx *gorm.DB) error {
 }
 
 // AfterFind decrypts APIKey after loading from database.
-// Legacy plaintext (without enc:v1: prefix) is returned as-is.
+// Legacy plaintext (without enc:v1: prefix) is returned as-is. When the value
+// is encrypted but SYSTEM_AES_KEY is missing/rotated and the data cannot be
+// decrypted, the error is propagated so the read fails loudly instead of
+// returning ciphertext to callers.
 func (t *Tenant) AfterFind(tx *gorm.DB) error {
-	if key := utils.GetAESKey(); key != nil && t.APIKey != "" {
-		if decrypted, err := utils.DecryptAESGCM(t.APIKey, key); err == nil {
-			t.APIKey = decrypted
-		}
+	decrypted, err := utils.DecryptStoredSecret(t.APIKey)
+	if err != nil {
+		return fmt.Errorf("decrypt tenants.api_key (id=%d): %w", t.ID, err)
 	}
+	t.APIKey = decrypted
 	return nil
 }
 
@@ -299,12 +302,12 @@ func (c *CredentialsConfig) Scan(value interface{}) error {
 	if err := json.Unmarshal(b, c); err != nil {
 		return err
 	}
-	if c.WeKnoraCloud != nil && c.WeKnoraCloud.AppSecret != "" {
-		if key := utils.GetAESKey(); key != nil {
-			if decrypted, err := utils.DecryptAESGCM(c.WeKnoraCloud.AppSecret, key); err == nil {
-				c.WeKnoraCloud.AppSecret = decrypted
-			}
+	if c.WeKnoraCloud != nil {
+		decrypted, err := utils.DecryptStoredSecret(c.WeKnoraCloud.AppSecret)
+		if err != nil {
+			return fmt.Errorf("decrypt tenant credentials we_knora_cloud.app_secret: %w", err)
 		}
+		c.WeKnoraCloud.AppSecret = decrypted
 	}
 	return nil
 }
@@ -399,16 +402,17 @@ func (c *ParserEngineConfig) Scan(value interface{}) error {
 	return json.Unmarshal(b, c)
 }
 
-// StorageEngineConfig holds tenant-level storage engine parameters for Local, MinIO, COS, TOS, S3, and OSS.
+// StorageEngineConfig holds tenant-level storage engine parameters for Local, MinIO, COS, TOS, S3, OSS, and KS3.
 // Knowledge bases select which provider to use; parameters are read from here.
 type StorageEngineConfig struct {
-	DefaultProvider string             `json:"default_provider"` // "local", "minio", "cos", "tos", "s3", "oss"
+	DefaultProvider string             `json:"default_provider"` // "local", "minio", "cos", "tos", "s3", "oss", "ks3"
 	Local           *LocalEngineConfig `json:"local,omitempty"`
 	MinIO           *MinIOEngineConfig `json:"minio,omitempty"`
 	COS             *COSEngineConfig   `json:"cos,omitempty"`
 	TOS             *TOSEngineConfig   `json:"tos,omitempty"`
 	S3              *S3EngineConfig    `json:"s3,omitempty"`
 	OSS             *OSSEngineConfig   `json:"oss,omitempty"`
+	KS3             *KS3EngineConfig   `json:"ks3,omitempty"`
 }
 
 // LocalEngineConfig is for local file system storage (single-machine deployment only).
@@ -469,6 +473,16 @@ type OSSEngineConfig struct {
 	UseTempBucket  bool   `json:"use_temp_bucket"`
 	TempBucketName string `json:"temp_bucket_name"`
 	TempRegion     string `json:"temp_region"`
+}
+
+// KS3EngineConfig is for Kingsoft Cloud KS3 object storage.
+type KS3EngineConfig struct {
+	Endpoint   string `json:"endpoint"`
+	Region     string `json:"region"`
+	AccessKey  string `json:"access_key"`
+	SecretKey  string `json:"secret_key"`
+	BucketName string `json:"bucket_name"`
+	PathPrefix string `json:"path_prefix"`
 }
 
 // Value implements the driver.Valuer interface for StorageEngineConfig
