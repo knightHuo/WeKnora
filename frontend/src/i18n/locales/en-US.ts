@@ -22,7 +22,7 @@ export default {
     unpinFailed: 'Failed to unpin, please try again later',
     confirmLogout: 'Are you sure you want to logout?',
     systemInfo: 'System Information',
-    knowledgeSearch: 'Search',
+    search: 'Search',
     collapseSidebar: 'Collapse Sidebar',
     expandSidebar: 'Expand Sidebar',
     logoutSuccess: 'Logged out successfully',
@@ -146,6 +146,11 @@ export default {
     channelDingtalk: 'DingTalk',
     channelSlack: 'Slack',
     channelIm: 'IM Channel',
+    channelNotion: 'Notion',
+    channelYuque: 'Yuque',
+    channelUpload: 'Upload',
+    channelManual: 'Manual',
+    channelUrl: 'Web',
     channelUnknown: 'Unknown',
     urlSource: 'Source URL',
     documentTitle: 'Document Title',
@@ -255,6 +260,7 @@ export default {
     columnTag: 'Tag',
     columnSize: 'Size',
     columnType: 'Type',
+    columnSource: 'Source',
     columnStatus: 'Status',
     columnUpdatedAt: 'Updated',
     columnActions: 'Actions',
@@ -1885,14 +1891,14 @@ export default {
     },
     chunking: {
       title: 'Chunking Settings',
-      description: 'Configure document chunking parameters to improve retrieval quality',
+      description: 'Controls how uploaded documents are split before embedding. Defaults work for most cases — tune only when retrieval quality is off.',
       sizeLabel: 'Chunk Size',
-      sizeDescription: 'Controls the number of characters in each chunk (100-4000)',
+      sizeDescription: 'Maximum characters per chunk (100–4000). Default 512 ≈ 100–130 English tokens. Smaller for FAQs (200–400), larger for narrative documents (1000–2000).',
       characters: 'characters',
       overlapLabel: 'Chunk Overlap',
-      overlapDescription: 'Number of overlapping characters between adjacent chunks (0-500)',
+      overlapDescription: 'Characters shared between adjacent chunks (0–500). Default 80 ≈ 15% of size — sweet spot per current research. Use 0 for FAQs/structured data, 150–200 for long-form narratives.',
       separatorsLabel: 'Separators',
-      separatorsDescription: 'Separators used when chunking documents',
+      separatorsDescription: 'Characters or strings the splitter prefers when cutting. Higher-priority separators are tried first; the default order favors paragraph → sentence → punctuation breaks.',
       separatorsPlaceholder: 'Select or customize separators',
       separators: {
         doubleNewline: 'Double newline (\
@@ -1908,11 +1914,76 @@ export default {
         space: 'Space ( )'
       },
       parentChildLabel: 'Parent-Child Chunking',
-      parentChildDescription: 'Enable two-level parent-child chunking strategy. Large parent chunks provide context while small child chunks are used for vector matching.',
+      parentChildDescription: 'Two-level chunking: small child chunks are vector-matched (precise hits) but the larger parent chunk is returned to the LLM (richer context). Recommended for long documents (>10 pages); skip for short FAQs to save storage.',
       parentChunkSizeLabel: 'Parent Chunk Size',
-      parentChunkSizeDescription: 'Size of parent chunks that provide context (256-4096)',
+      parentChunkSizeDescription: 'Size of the context chunk returned to the LLM (512–8192). Default 4096 ≈ 1000 English tokens, fits comfortably in any modern LLM context window.',
       childChunkSizeLabel: 'Child Chunk Size',
-      childChunkSizeDescription: 'Size of child chunks used for embedding matching (64-1024)'
+      childChunkSizeDescription: 'Size of the embedded chunk used for vector match (64–2048). Default 384 ≈ 80 tokens — sweet spot for sentence-transformer / BGE-style embedders.',
+      strategyLabel: 'Chunking Strategy',
+      strategyDescription: 'Choose how documents are split into chunks. The Automatic mode profiles each document and picks the best strategy.',
+      strategyPlaceholder: 'Select a chunking strategy (splits by length if left empty)',
+      strategies: {
+        auto: {
+          label: 'Automatic',
+          tooltip: 'A document profiler picks between heading-aware, structure-aware and length-based splitting per upload.'
+        },
+        heading: {
+          label: 'Heading-aware',
+          tooltip: 'Splits at Markdown heading boundaries (#, ##, ###); each chunk carries its heading path. Best for well-structured Markdown.'
+        },
+        heuristic: {
+          label: 'Structure-aware',
+          tooltip: 'Splits on detected structural cues: page-breaks, numbered sections, multilingual chapter markers (DE/EN/ZH), all-caps titles. Ideal for PDFs without Markdown headings.'
+        },
+        legacy: {
+          label: 'Length-based',
+          tooltip: 'Ignores structure; splits recursively by character count and separators — the original behavior. Use when the structure-aware strategies misbehave on your content.'
+        }
+      },
+      overlapWarning: 'Overlap is large compared to chunk size — chunks will share most of their content.',
+      advancedLabel: 'Advanced options',
+      tokenLimitLabel: 'Token limit per chunk',
+      tokenLimitDescription: 'Hard token cap per chunk (0–8192). 0 = off (chunk size in characters only). Activate when your embedding model has a small token limit: 200 for MiniLM (256 tok), 400 for BGE/Cohere (512 tok). Modern embedders (OpenAI, Voyage, Jina-v3) accept >2000 tokens — leave at 0.',
+      languagesLabel: 'Language hints',
+      languagesDescription: 'Restricts heuristic patterns to the chosen languages (DE/EN/ZH). Empty = auto-detect from sample. Set explicitly for homogeneous corpora to avoid false-positive matches across languages.',
+      languagesPlaceholder: 'Auto-detect',
+      languageOptions: {
+        de: 'German',
+        en: 'English',
+        zh: 'Chinese'
+      },
+      debug: {
+        toggle: 'Preview chunking',
+        toggleHint: 'Run the chunker against sample text without re-uploading',
+        sampleLabel: 'Sample text',
+        samplePlaceholder: 'Paste a Markdown / plain-text snippet to see how the current configuration would chunk it…',
+        presetLabel: 'Load sample:',
+        samples: {
+          markdown: 'Markdown doc',
+          faq: 'FAQ list',
+          chapter: 'PDF chapters',
+          plain: 'Plain prose'
+        },
+        runButton: 'Run preview',
+        loading: 'Running chunker on sample…',
+        errorPrefix: 'Preview failed',
+        selectedTier: 'Selected strategy',
+        rejected: 'Rejected tiers',
+        contextHeader: 'Context header',
+        fallbackWarning: 'Strategy chain fell through — content does not split intelligently with current settings',
+        profile: {
+          lines: 'lines',
+          chars: 'chars',
+          headings: 'Markdown headings',
+          pageBreaks: 'page breaks',
+          chapterMarkers: 'chapter markers',
+          languages: 'languages'
+        },
+        stats: {
+          chunks: 'chunks',
+          truncated: 'truncated; total {total}'
+        }
+      }
     },
     multimodal: {
       title: 'Image Processing Configuration',
@@ -3362,6 +3433,50 @@ export default {
     exitFullscreen: 'Exit Fullscreen',
     audioLoading: 'Loading audio…',
     audioNotSupported: 'Your browser does not support audio playback',
+  },
+  commandPalette: {
+    placeholder: 'Search knowledge bases, files, conversations…',
+    searching: 'Searching…',
+    clearRecent: 'Clear',
+    retrieval: 'Retrieval settings',
+    untitledSession: 'Untitled conversation',
+    scope: {
+      placeholder: 'Search within this knowledge base…',
+      remove: 'Remove scope (Backspace)',
+    },
+    group: {
+      chunks: 'Files',
+      messages: 'Messages',
+      kbs: 'Knowledge bases',
+      agents: 'Agents',
+      sessionsByTitle: 'Chats (by title)',
+      commands: 'Commands',
+      recent: 'Recent',
+      quickActions: 'Quick actions',
+    },
+    match: {
+      vector: 'Vector',
+      keyword: 'Keyword',
+    },
+    quick: {
+      newChat: 'New conversation',
+      knowledgeBases: 'Open knowledge bases',
+      agents: 'Open agents',
+      organizations: 'Open shared spaces',
+      settings: 'Open settings',
+    },
+    empty: {
+      noResults: 'No matches found',
+      askAi: 'Ask the AI directly',
+      adjustRetrieval: 'Adjust retrieval',
+    },
+    hotkey: {
+      select: 'Navigate',
+      enter: 'Open',
+      cmdNumber: 'Jump to',
+      cmdEnter: 'Start chat',
+      esc: 'Close',
+    },
   },
   knowledgeSearch: {
     title: 'Search',

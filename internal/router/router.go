@@ -35,6 +35,7 @@ type RouterParams struct {
 	dig.In
 
 	Config                   *config.Config
+	FileService              interfaces.FileService
 	UserService              interfaces.UserService
 	KBService                interfaces.KnowledgeBaseService
 	KnowledgeService         interfaces.KnowledgeService
@@ -120,7 +121,7 @@ func NewRouter(params RouterParams) *gin.Engine {
 	r.Use(middleware.Auth(params.TenantService, params.UserService, params.Config))
 
 	// 文件服务：统一代理本地/MinIO/COS/TOS存储后端（需要认证）
-	serveFiles(r)
+	serveFiles(r, params.FileService)
 
 	// Presigned file access: no auth required, signature-verified.
 	servePresignedFiles(r, params.TenantService)
@@ -160,9 +161,16 @@ func NewRouter(params RouterParams) *gin.Engine {
 		RegisterDataSourceRoutes(v1, params.DataSourceHandler)
 		RegisterWeKnoraCloudRoutes(v1, params.WeKnoraCloudHandler)
 		RegisterWikiPageRoutes(v1, params.WikiPageHandler)
+		RegisterChunkerDebugRoutes(v1)
 	}
 
 	return r
+}
+
+// RegisterChunkerDebugRoutes wires the read-only chunker preview endpoint
+// used by the KB editor's debug panel. Stateless — uses no service deps.
+func RegisterChunkerDebugRoutes(r *gin.RouterGroup) {
+	r.POST("/chunker/preview", handler.PreviewChunking)
 }
 
 // RegisterChunkRoutes 注册分块相关的路由
@@ -727,13 +735,26 @@ func serveFrontendStatic(r *gin.Engine) {
 		}
 		fullPath := filepath.Join(absDir, path)
 		if info, err := os.Stat(fullPath); err == nil && !info.IsDir() {
+			setFrontendCacheHeaders(c.Writer, path)
 			fileServer.ServeHTTP(c.Writer, c.Request)
 			c.Abort()
 			return
 		}
+		setFrontendCacheHeaders(c.Writer, "/index.html")
 		c.File(indexPath)
 		c.Abort()
 	})
+}
+
+// setFrontendCacheHeaders sets Cache-Control headers for frontend static resources.
+// Vite 构建产物中 /assets/* 的文件名带 hash，可长期缓存；其余（index.html、config.js、favicon 等）
+// 每次都需 revalidate，避免前端升级后用户看到旧版本。
+func setFrontendCacheHeaders(w http.ResponseWriter, path string) {
+	if strings.HasPrefix(path, "/assets/") {
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		return
+	}
+	w.Header().Set("Cache-Control", "no-cache, must-revalidate")
 }
 
 // serveFiles serves files via query parameters and tenant storage settings.
@@ -741,7 +762,11 @@ func serveFrontendStatic(r *gin.Engine) {
 //
 // Route:
 //   - /files?file_path=<provider://...>
-func serveFiles(r *gin.Engine) {
+type getRouteRegistrar interface {
+	GET(string, ...gin.HandlerFunc) gin.IRoutes
+}
+
+func serveFiles(r getRouteRegistrar, globalFileService interfaces.FileService) {
 	baseDir := os.Getenv("LOCAL_STORAGE_BASE_DIR")
 	if baseDir == "" {
 		baseDir = "/data/files"
@@ -774,11 +799,31 @@ func serveFiles(r *gin.Engine) {
 			return
 		}
 
-		fileSvc, resolvedProvider, err := filesvc.NewFileServiceFromStorageConfig(provider, tenant.StorageEngineConfig, absDir)
+		var (
+			fileSvc          interfaces.FileService
+			resolvedProvider string
+			err              error
+		)
+
+		if tenant.StorageEngineConfig != nil {
+			fileSvc, resolvedProvider, err = filesvc.NewFileServiceFromStorageConfig(provider, tenant.StorageEngineConfig, absDir)
+		} else {
+			err = http.ErrMissingFile
+		}
 		if err != nil {
-			logger.Warnf(context.Background(), "[Router] /files resolve file service failed: tenant_id=%d provider=%s err=%v", tenant.ID, provider, err)
-			c.Status(http.StatusBadRequest)
-			return
+			globalStorageType := strings.ToLower(strings.TrimSpace(os.Getenv("STORAGE_TYPE")))
+			if globalStorageType == "" {
+				globalStorageType = "local"
+			}
+			if provider == globalStorageType && globalFileService != nil {
+				logger.Warnf(context.Background(), "[Router] /files tenant storage config missing or invalid, fallback to global file service: tenant_id=%d provider=%s err=%v", tenant.ID, provider, err)
+				fileSvc = globalFileService
+				resolvedProvider = globalStorageType
+			} else {
+				logger.Warnf(context.Background(), "[Router] /files resolve file service failed without fallback: tenant_id=%d provider=%s global_storage_type=%s err=%v", tenant.ID, provider, globalStorageType, err)
+				c.Status(http.StatusBadRequest)
+				return
+			}
 		}
 
 		reader, err := fileSvc.GetFile(c.Request.Context(), filePath)

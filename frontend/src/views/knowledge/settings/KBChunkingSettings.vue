@@ -1,11 +1,43 @@
 <template>
   <div class="kb-chunking-settings">
     <div class="section-header">
-      <h2>{{ $t('knowledgeEditor.chunking.title') }}</h2>
-      <p class="section-description">{{ $t('knowledgeEditor.chunking.description') }}</p>
+      <div class="section-header-text">
+        <h2>{{ $t('knowledgeEditor.chunking.title') }}</h2>
+        <p class="section-description">{{ $t('knowledgeEditor.chunking.description') }}</p>
+      </div>
     </div>
 
     <div class="settings-group">
+      <!-- Strategy -->
+      <div class="setting-row">
+        <div class="setting-info">
+          <label>{{ $t('knowledgeEditor.chunking.strategyLabel') }}</label>
+          <p class="desc">{{ $t('knowledgeEditor.chunking.strategyDescription') }}</p>
+        </div>
+        <div class="setting-control strategy-control">
+          <t-select
+            v-model="localStrategy"
+            :options="strategyOptions"
+            :placeholder="$t('knowledgeEditor.chunking.strategyPlaceholder')"
+            :clearable="true"
+            @change="handleStrategyChange"
+            style="width: 280px;"
+          />
+          <!-- Test trigger sits right next to the strategy picker so users
+               discover it exactly when they're deciding which strategy to
+               use on their content. -->
+          <KBChunkingDebug :config="debugConfig" />
+        </div>
+      </div>
+
+      <!-- Strategy explanation panel -->
+      <div v-if="currentStrategyInfo" class="strategy-info-panel">
+        <p>
+          <strong>{{ currentStrategyInfo.label }}:</strong>
+          {{ currentStrategyInfo.tooltip }}
+        </p>
+      </div>
+
       <!-- Chunk Size -->
       <div class="setting-row">
         <div class="setting-info">
@@ -33,6 +65,7 @@
         <div class="setting-info">
           <label>{{ $t('knowledgeEditor.chunking.overlapLabel') }}</label>
           <p class="desc">{{ $t('knowledgeEditor.chunking.overlapDescription') }}</p>
+          <p v-if="overlapTooHigh" class="warn">{{ $t('knowledgeEditor.chunking.overlapWarning') }}</p>
         </div>
         <div class="setting-control">
           <div class="slider-container">
@@ -127,6 +160,53 @@
           </div>
         </div>
       </div>
+
+      <!-- Advanced section toggle -->
+      <button type="button" class="advanced-toggle" @click="advancedOpen = !advancedOpen">
+        <chevron-right-icon class="toggle-arrow" :class="{ open: advancedOpen }" />
+        <span>{{ $t('knowledgeEditor.chunking.advancedLabel') }}</span>
+      </button>
+
+      <div v-if="advancedOpen" class="advanced-section">
+        <!-- Token Limit -->
+        <div class="setting-row" :class="{ disabled: advancedDisabled }">
+          <div class="setting-info">
+            <label>{{ $t('knowledgeEditor.chunking.tokenLimitLabel') }}</label>
+            <p class="desc">{{ $t('knowledgeEditor.chunking.tokenLimitDescription') }}</p>
+          </div>
+          <div class="setting-control">
+            <t-input-number
+              v-model="localTokenLimit"
+              :min="0"
+              :max="8192"
+              :step="64"
+              :disabled="advancedDisabled"
+              @change="handleTokenLimitChange"
+              style="width: 200px;"
+            />
+          </div>
+        </div>
+
+        <!-- Languages -->
+        <div class="setting-row" :class="{ disabled: advancedDisabled }">
+          <div class="setting-info">
+            <label>{{ $t('knowledgeEditor.chunking.languagesLabel') }}</label>
+            <p class="desc">{{ $t('knowledgeEditor.chunking.languagesDescription') }}</p>
+          </div>
+          <div class="setting-control">
+            <t-select
+              v-model="localLanguages"
+              :options="languageOptions"
+              multiple
+              :disabled="advancedDisabled"
+              :placeholder="$t('knowledgeEditor.chunking.languagesPlaceholder')"
+              @change="handleLanguagesChange"
+              style="width: 280px;"
+            />
+          </div>
+        </div>
+      </div>
+
     </div>
   </div>
 </template>
@@ -134,12 +214,27 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { ChevronRightIcon } from 'tdesign-icons-vue-next'
+import KBChunkingDebug from './KBChunkingDebug.vue'
 
 interface ParserEngineRule {
   file_types: string[]
   engine: string
 }
 
+// Slider ranges defined in this file (min/max props on t-slider) mirror
+// the validated bounds in the backend splitter:
+//   ChunkSize:      100–4000  (default 512). 100 = too fragmented to be
+//                   useful; 4000 = approaches the 7500-char absoluteMaxSize
+//                   that the splitter hard-caps to anyway.
+//   ChunkOverlap:   0–500     (default 80). Backend caps to ChunkSize/2
+//                   when set higher than that.
+//   ParentChunkSize: 512–8192 (default 4096 ≈ 1000 EN tokens).
+//   ChildChunkSize:  64–2048  (default 384 ≈ 80 EN tokens, sweet spot for
+//                   sentence-transformer / BGE embedders).
+//   TokenLimit:      0–8192   (default 0 = off, char-based budget only).
+//                   Set to 200 for MiniLM (256-tok limit), 400 for BGE/
+//                   Cohere (512-tok), leave at 0 for OpenAI/Voyage/Jina-v3.
 interface ChunkingConfig {
   chunkSize: number
   chunkOverlap: number
@@ -148,6 +243,12 @@ interface ChunkingConfig {
   enableParentChild: boolean
   parentChunkSize: number
   childChunkSize: number
+  // Adaptive chunking strategy. Empty string = legacy / not set.
+  strategy?: string
+  // Cap chunk size in approx tokens. 0 = char-based budget only.
+  tokenLimit?: number
+  // Language hints for heuristic patterns (de/en/zh).
+  languages?: string[]
 }
 
 interface Props {
@@ -160,13 +261,71 @@ const emit = defineEmits<{
   'update:config': [value: ChunkingConfig]
 }>()
 
+const { t } = useI18n()
+
 const localChunkSize = ref(props.config.chunkSize)
 const localChunkOverlap = ref(props.config.chunkOverlap)
 const localSeparators = ref([...props.config.separators])
 const localEnableParentChild = ref(props.config.enableParentChild ?? false)
 const localParentChunkSize = ref(props.config.parentChunkSize || 4096)
 const localChildChunkSize = ref(props.config.childChunkSize || 384)
-const { t } = useI18n()
+const localStrategy = ref(props.config.strategy ?? '')
+const localTokenLimit = ref(props.config.tokenLimit ?? 0)
+const localLanguages = ref<string[]>([...(props.config.languages ?? [])])
+const advancedOpen = ref(false)
+
+const strategyOptions = computed(() => [
+  {
+    label: t('knowledgeEditor.chunking.strategies.auto.label'),
+    value: 'auto',
+    tooltip: t('knowledgeEditor.chunking.strategies.auto.tooltip')
+  },
+  {
+    label: t('knowledgeEditor.chunking.strategies.heading.label'),
+    value: 'heading',
+    tooltip: t('knowledgeEditor.chunking.strategies.heading.tooltip')
+  },
+  {
+    label: t('knowledgeEditor.chunking.strategies.heuristic.label'),
+    value: 'heuristic',
+    tooltip: t('knowledgeEditor.chunking.strategies.heuristic.tooltip')
+  },
+  {
+    label: t('knowledgeEditor.chunking.strategies.legacy.label'),
+    value: 'legacy',
+    tooltip: t('knowledgeEditor.chunking.strategies.legacy.tooltip')
+  }
+])
+
+const currentStrategyInfo = computed(() => {
+  if (!localStrategy.value) {
+    return null
+  }
+  return strategyOptions.value.find(o => o.value === localStrategy.value) ?? null
+})
+
+const advancedDisabled = computed(() => localStrategy.value === 'legacy')
+
+const overlapTooHigh = computed(
+  () => localChunkOverlap.value > 0 && localChunkOverlap.value >= localChunkSize.value / 2
+)
+
+// Live config snapshot for the debug panel — uses current local form values
+// so the panel reflects edits immediately without waiting for save.
+const debugConfig = computed(() => ({
+  chunkSize: localChunkSize.value,
+  chunkOverlap: localChunkOverlap.value,
+  separators: localSeparators.value,
+  strategy: localStrategy.value,
+  tokenLimit: localTokenLimit.value,
+  languages: localLanguages.value
+}))
+
+const languageOptions = computed(() => [
+  { label: t('knowledgeEditor.chunking.languageOptions.de'), value: 'de' },
+  { label: t('knowledgeEditor.chunking.languageOptions.en'), value: 'en' },
+  { label: t('knowledgeEditor.chunking.languageOptions.zh'), value: 'zh' }
+])
 
 const separatorOptions = computed(() => [
   { label: t('knowledgeEditor.chunking.separators.doubleNewline'), value: '\n\n' },
@@ -186,6 +345,9 @@ watch(() => props.config, (newConfig) => {
   localEnableParentChild.value = newConfig.enableParentChild ?? false
   localParentChunkSize.value = newConfig.parentChunkSize || 4096
   localChildChunkSize.value = newConfig.childChunkSize || 384
+  localStrategy.value = newConfig.strategy ?? ''
+  localTokenLimit.value = newConfig.tokenLimit ?? 0
+  localLanguages.value = [...(newConfig.languages ?? [])]
 }, { deep: true })
 
 const handleChunkSizeChange = () => { emitUpdate() }
@@ -194,16 +356,25 @@ const handleSeparatorsChange = () => { emitUpdate() }
 const handleParentChildChange = () => { emitUpdate() }
 const handleParentChunkSizeChange = () => { emitUpdate() }
 const handleChildChunkSizeChange = () => { emitUpdate() }
+const handleStrategyChange = () => { emitUpdate() }
+const handleTokenLimitChange = () => { emitUpdate() }
+const handleLanguagesChange = () => { emitUpdate() }
 
 const emitUpdate = () => {
+  // Spread arrays so the parent gets its own copy. Mutating the emitted
+  // arrays from outside must not leak back into our reactive state and
+  // cause two-way ref drift between the form and the editor model.
   emit('update:config', {
     chunkSize: localChunkSize.value,
     chunkOverlap: localChunkOverlap.value,
-    separators: localSeparators.value,
+    separators: [...localSeparators.value],
     parserEngineRules: props.config.parserEngineRules,
     enableParentChild: localEnableParentChild.value,
     parentChunkSize: localParentChunkSize.value,
-    childChunkSize: localChildChunkSize.value
+    childChunkSize: localChildChunkSize.value,
+    strategy: localStrategy.value,
+    tokenLimit: localTokenLimit.value,
+    languages: [...localLanguages.value]
   })
 }
 </script>
@@ -214,7 +385,26 @@ const emitUpdate = () => {
 }
 
 .section-header {
-  margin-bottom: 32px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  // Stick to the top of the scrollable section so the section title remains
+  // visible while the user scrolls through a long form. Negative top and
+  // matching negative margins compensate for content-wrapper's padding
+  // (24px 32px) so the sticky band visually spans the full width when stuck.
+  position: sticky;
+  top: -24px;
+  z-index: 5;
+  background: var(--td-bg-color-container);
+  padding: 24px 32px 16px 32px;
+  margin: -24px -32px 24px -32px;
+  border-bottom: 1px solid var(--td-component-stroke);
+
+  .section-header-text {
+    flex: 1;
+    min-width: 0;
+  }
 
   h2 {
     font-size: 20px;
@@ -247,6 +437,30 @@ const emitUpdate = () => {
   &:last-child {
     border-bottom: none;
   }
+
+  &.disabled {
+    opacity: 0.5;
+  }
+}
+
+.strategy-info-panel {
+  margin: 0 0 16px 0;
+  padding: 10px 14px;
+  background: var(--td-bg-color-container-hover);
+  border-left: 3px solid var(--td-brand-color);
+  border-radius: 0 4px 4px 0;
+  font-size: 13px;
+  color: var(--td-text-color-secondary);
+  line-height: 1.5;
+
+  p {
+    margin: 0;
+    word-break: break-word;
+  }
+
+  strong {
+    color: var(--td-text-color-primary);
+  }
 }
 
 .setting-info {
@@ -268,6 +482,13 @@ const emitUpdate = () => {
     margin: 0;
     line-height: 1.5;
   }
+
+  .warn {
+    font-size: 12px;
+    color: var(--td-warning-color);
+    margin: 4px 0 0 0;
+    line-height: 1.4;
+  }
 }
 
 .setting-control {
@@ -276,6 +497,15 @@ const emitUpdate = () => {
   display: flex;
   justify-content: flex-end;
   align-items: center;
+}
+
+// Strategy row stacks the picker above the test trigger so the action has
+// room to breathe without competing with the select for horizontal space.
+// Both children stay right-aligned under the section's right column.
+.strategy-control {
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
 }
 
 .slider-container {
@@ -292,5 +522,45 @@ const emitUpdate = () => {
   font-weight: 500;
   min-width: 80px;
   text-align: right;
+}
+
+.advanced-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 16px 0 8px 0;
+  margin: 0;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--td-text-color-secondary);
+  user-select: none;
+
+  &:hover {
+    color: var(--td-text-color-primary);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--td-brand-color-focus);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+}
+
+.toggle-arrow {
+  font-size: 16px;
+  transition: transform 0.15s ease;
+
+  &.open {
+    transform: rotate(90deg);
+  }
+}
+
+.advanced-section {
+  // Visually grouped via the toggle above; avoid a left rule that hugs the
+  // panel edge and looks detached from the rest of the form.
+  margin-top: 4px;
 }
 </style>

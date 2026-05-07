@@ -22,7 +22,7 @@ export default {
     unpinFailed: "고정 해제 실패, 나중에 다시 시도해 주세요",
     confirmLogout: "정말 로그아웃 하시겠습니까?",
     systemInfo: "시스템 정보",
-    knowledgeSearch: "검색",
+    search: "검색",
     collapseSidebar: "사이드바 접기",
     expandSidebar: "사이드바 펼치기",
     logoutSuccess: "로그아웃되었습니다",
@@ -146,6 +146,11 @@ export default {
     channelDingtalk: "DingTalk",
     channelSlack: "Slack",
     channelIm: "IM 채널",
+    channelNotion: "Notion",
+    channelYuque: "Yuque",
+    channelUpload: "업로드",
+    channelManual: "수동",
+    channelUrl: "웹",
     channelUnknown: "알 수 없음",
     urlSource: "원본 URL",
     documentTitle: "문서 제목",
@@ -259,6 +264,7 @@ export default {
     columnTag: "태그",
     columnSize: "크기",
     columnType: "유형",
+    columnSource: "소스",
     columnStatus: "상태",
     columnUpdatedAt: "업데이트",
     columnActions: "작업",
@@ -2497,14 +2503,14 @@ export default {
     },
     chunking: {
       title: "청크 설정",
-      description: "문서 청킹 파라미터를 설정하여 검색 효과 최적화",
+      description: "업로드된 문서가 임베딩되기 전에 분할되는 방식을 제어합니다. 대부분의 경우 기본값으로 충분합니다.",
       sizeLabel: "청크 크기",
-      sizeDescription: "각 문서 청크의 문자 수 제어 (100-4000)",
+      sizeDescription: "청크당 최대 문자 수 (100-4000). 기본값 512 ≈ 영어 100-130 토큰. FAQ는 200-400, 서술형 문서는 1000-2000.",
       characters: "문자",
       overlapLabel: "청크 중복",
-      overlapDescription: "인접 문서 청크 간의 중복 문자 수 (0-500)",
+      overlapDescription: "인접 청크 간 공유 문자 수 (0-500). 기본값 80 ≈ 청크 크기의 15% — 현재 연구 권장값. FAQ/구조화 데이터는 0, 긴 서술은 150-200.",
       separatorsLabel: "구분자",
-      separatorsDescription: "문서 청킹 시 사용되는 구분자",
+      separatorsDescription: "분할 시 우선적으로 사용되는 문자/문자열. 우선순위가 높은 구분자를 먼저 시도; 기본 순서는 단락 → 문장 → 구두점.",
       separatorsPlaceholder: "구분자 선택 또는 사용자 정의",
       separators: {
         doubleNewline: "이중 줄바꿈 (\\n\\n)",
@@ -2517,11 +2523,76 @@ export default {
         space: "공백 ( )",
       },
       parentChildLabel: "부모-자식 청킹",
-      parentChildDescription: "2단계 부모-자식 청킹 전략을 활성화합니다. 큰 부모 청크는 컨텍스트를 제공하고, 작은 자식 청크는 벡터 매칭에 사용됩니다.",
+      parentChildDescription: "2단계 청킹: 작은 자식 청크는 벡터 매칭(정확한 히트), 큰 부모 청크는 LLM에 반환(풍부한 컨텍스트). 긴 문서(>10페이지)에 권장; 짧은 FAQ는 비활성화하여 저장 공간 절약.",
       parentChunkSizeLabel: "부모 청크 크기",
-      parentChunkSizeDescription: "컨텍스트를 제공하는 부모 청크의 문자 수 (256-4096)",
+      parentChunkSizeDescription: "LLM에 반환되는 컨텍스트 청크 크기 (512-8192). 기본값 4096 ≈ 1000 영어 토큰, 모든 현대 LLM 컨텍스트에 적합.",
       childChunkSizeLabel: "자식 청크 크기",
-      childChunkSizeDescription: "임베딩 매칭에 사용되는 자식 청크의 문자 수 (64-1024)",
+      childChunkSizeDescription: "벡터 매칭에 사용되는 임베딩 청크 크기 (64-2048). 기본값 384 ≈ 80 토큰 — sentence-transformer / BGE 임베더의 최적점.",
+      strategyLabel: "청킹 전략",
+      strategyDescription: "문서를 청크로 분할하는 방법을 선택합니다. 자동 모드는 문서를 프로파일링하여 최적의 전략을 선택합니다.",
+      strategyPlaceholder: "청킹 전략 선택 (비워 두면 길이로 분할)",
+      strategies: {
+        auto: {
+          label: "자동",
+          tooltip: "문서 프로파일러가 콘텐츠 구조에 따라 「헤딩 기준」, 「구조 인식」, 「길이 기준」 분할 중 하나를 자동 선택합니다."
+        },
+        heading: {
+          label: "헤딩 기준",
+          tooltip: "Markdown 헤딩(#, ##, ###) 경계에서 분할하며 각 청크에 헤딩 경로가 부착됩니다. 잘 구조화된 Markdown 문서에 적합합니다."
+        },
+        heuristic: {
+          label: "구조 인식",
+          tooltip: "페이지 구분자, 번호 매겨진 섹션, 다국어 챕터 마커(DE/EN/ZH), 대문자 제목 등 구조적 신호를 감지하여 분할합니다. Markdown 헤딩이 없는 PDF/스캔본에 적합합니다."
+        },
+        legacy: {
+          label: "길이 기준",
+          tooltip: "구조를 무시하고 문자 수와 구분자로만 재귀 분할합니다 — 원래 동작. 위 전략들이 콘텐츠에서 잘못 작동할 때 사용하세요."
+        }
+      },
+      overlapWarning: "오버랩이 청크 크기에 비해 큽니다 — 청크가 대부분의 콘텐츠를 공유합니다.",
+      advancedLabel: "고급 옵션",
+      tokenLimitLabel: "청크당 토큰 제한",
+      tokenLimitDescription: "청크당 토큰 하드 제한 (0-8192). 0 = 끄기 (문자 크기만). 임베딩 모델의 토큰 제한이 작을 때 활성화: MiniLM (256 tok)은 200, BGE/Cohere (512 tok)는 400. 현대 임베더(OpenAI, Voyage, Jina-v3)는 >2000 토큰 지원 — 0으로 두세요.",
+      languagesLabel: "언어 힌트",
+      languagesDescription: "휴리스틱 패턴을 선택한 언어(DE/EN/ZH)로만 제한합니다. 비어 있음 = 샘플에서 자동 감지. 동질적인 코퍼스는 명시적으로 설정하여 언어 간 오탐 방지.",
+      languagesPlaceholder: "자동 감지",
+      languageOptions: {
+        de: "독일어",
+        en: "영어",
+        zh: "중국어"
+      },
+      debug: {
+        toggle: "청킹 결과 미리보기",
+        toggleHint: "재업로드 없이 샘플 텍스트에 대해 청커 실행",
+        sampleLabel: "샘플 텍스트",
+        samplePlaceholder: "현재 구성으로 어떻게 청크되는지 보려면 Markdown / 일반 텍스트 스니펫을 붙여넣으세요…",
+        presetLabel: "샘플 불러오기:",
+        samples: {
+          markdown: "Markdown 문서",
+          faq: "FAQ 목록",
+          chapter: "PDF 챕터",
+          plain: "일반 텍스트"
+        },
+        runButton: "미리보기 실행",
+        loading: "샘플에 대해 청커 실행 중…",
+        errorPrefix: "미리보기 실패",
+        selectedTier: "선택된 전략",
+        rejected: "거부된 계층",
+        contextHeader: "컨텍스트 헤더",
+        fallbackWarning: "전략 체인이 모두 실패함 — 현재 설정으로는 콘텐츠를 지능적으로 분할할 수 없음",
+        profile: {
+          lines: "줄",
+          chars: "문자",
+          headings: "Markdown 제목",
+          pageBreaks: "페이지 구분",
+          chapterMarkers: "챕터 마커",
+          languages: "언어"
+        },
+        stats: {
+          chunks: "청크",
+          truncated: "잘림; 총 {total}"
+        }
+      }
     },
     multimodal: {
       title: "이미지 처리 설정",
@@ -3430,6 +3501,50 @@ export default {
     exitFullscreen: '전체 화면 종료',
     audioLoading: '오디오 로딩 중…',
     audioNotSupported: '브라우저가 오디오 재생을 지원하지 않습니다',
+  },
+  commandPalette: {
+    placeholder: '지식베이스, 파일, 대화 검색…',
+    searching: '검색 중…',
+    clearRecent: '지우기',
+    retrieval: '검색 설정',
+    untitledSession: '제목 없는 대화',
+    scope: {
+      placeholder: '이 지식베이스에서 검색…',
+      remove: '범위 해제 (Backspace)',
+    },
+    group: {
+      chunks: '지식베이스 파일',
+      messages: '대화 메시지',
+      kbs: '지식베이스',
+      agents: '에이전트',
+      sessionsByTitle: '대화（제목별）',
+      commands: '명령',
+      recent: '최근 검색',
+      quickActions: '빠른 작업',
+    },
+    match: {
+      vector: '벡터',
+      keyword: '키워드',
+    },
+    quick: {
+      newChat: '새 대화',
+      knowledgeBases: '지식베이스 열기',
+      agents: '에이전트 열기',
+      organizations: '공유 공간 열기',
+      settings: '설정 열기',
+    },
+    empty: {
+      noResults: '일치하는 결과 없음',
+      askAi: 'AI에게 직접 질문하기',
+      adjustRetrieval: '검색 설정 조정',
+    },
+    hotkey: {
+      select: '이동',
+      enter: '열기',
+      cmdNumber: '바로 이동',
+      cmdEnter: '대화 시작',
+      esc: '닫기',
+    },
   },
   knowledgeSearch: {
     title: '검색',

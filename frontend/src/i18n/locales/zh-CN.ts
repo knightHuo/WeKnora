@@ -22,7 +22,7 @@ export default {
     unpinFailed: "取消置顶失败，请稍后再试",
     confirmLogout: "确定要退出登录吗？",
     systemInfo: "系统信息",
-    knowledgeSearch: "搜索",
+    search: "搜索",
     collapseSidebar: "收起侧边栏",
     expandSidebar: "展开侧边栏",
     logoutSuccess: "已退出登录",
@@ -145,6 +145,11 @@ export default {
     channelDingtalk: "钉钉",
     channelSlack: "Slack",
     channelIm: "IM 渠道",
+    channelNotion: "Notion",
+    channelYuque: "语雀",
+    channelUpload: "上传",
+    channelManual: "手动",
+    channelUrl: "网页",
     channelUnknown: "未知",
     urlSource: "来源网址",
     documentTitle: "文档标题",
@@ -256,6 +261,7 @@ export default {
     columnTag: "标签",
     columnSize: "大小",
     columnType: "类型",
+    columnSource: "来源",
     columnStatus: "状态",
     columnUpdatedAt: "更新时间",
     columnActions: "操作",
@@ -2456,14 +2462,14 @@ export default {
     },
     chunking: {
       title: "分块设置",
-      description: "配置文档分块参数，优化检索效果",
+      description: "控制上传文档在嵌入前的切分方式。默认值适用于大多数场景，仅在检索质量异常时调整。",
       sizeLabel: "分块大小",
-      sizeDescription: "控制每个文档分块的字符数（100-4000）",
+      sizeDescription: "每个分块的最大字符数（100-4000）。默认 512 ≈ 中文 300 tokens / 英文 100-130 tokens。FAQ 用 200-400，叙述性长文档用 1000-2000。",
       characters: "字符",
       overlapLabel: "分块重叠",
-      overlapDescription: "相邻文档块之间的重叠字符数（0-500）",
+      overlapDescription: "相邻分块之间共享的字符数（0-500）。默认 80 ≈ 分块大小的 15%，符合当前研究推荐。FAQ/结构化数据用 0，长篇叙述用 150-200。",
       separatorsLabel: "分隔符",
-      separatorsDescription: "文档分块时使用的分隔符",
+      separatorsDescription: "切分时优先使用的字符或字符串。优先级高的分隔符先尝试；默认顺序优先段落 → 句子 → 标点。",
       separatorsPlaceholder: "选择或自定义分隔符",
       separators: {
         doubleNewline: "双换行 (\\n\\n)",
@@ -2476,11 +2482,76 @@ export default {
         space: "空格 ( )",
       },
       parentChildLabel: "父子分块",
-      parentChildDescription: "启用两级父子分块策略。大的父块提供上下文，小的子块用于向量匹配检索。",
+      parentChildDescription: "两级分块：小的子块用于向量匹配（精准命中），大的父块返回给 LLM（更丰富上下文）。建议用于长文档（>10 页）；短 FAQ 可关闭以节省存储。",
       parentChunkSizeLabel: "父块大小",
-      parentChunkSizeDescription: "提供上下文的父块字符数（256-4096）",
+      parentChunkSizeDescription: "返回给 LLM 的上下文块大小（512-8192）。默认 4096 ≈ 1000 英文 tokens，适合所有现代 LLM 上下文窗口。",
       childChunkSizeLabel: "子块大小",
-      childChunkSizeDescription: "用于向量匹配的子块字符数（64-1024）",
+      childChunkSizeDescription: "用于向量匹配的嵌入块大小（64-2048）。默认 384 ≈ 80 tokens，是 sentence-transformer / BGE 类嵌入模型的最佳点。",
+      strategyLabel: "分块策略",
+      strategyDescription: "选择文档的分块方式。自动模式会分析每个文档的结构并选择最佳策略。",
+      strategyPlaceholder: "选择分块策略（不填则按长度切分）",
+      strategies: {
+        auto: {
+          label: "自动",
+          tooltip: "文档分析器根据内容结构自动在「按标题切分」「结构感知」「按长度切分」之间选择。"
+        },
+        heading: {
+          label: "按标题切分",
+          tooltip: "在 Markdown 标题（#、##、###）边界处切分，每块自动带上所在标题路径。适合结构清晰的 Markdown 文档。"
+        },
+        heuristic: {
+          label: "结构感知",
+          tooltip: "识别分页符、编号章节、多语言章节标记（DE/EN/ZH）、全大写标题等结构信号进行切分。适合没有 Markdown 标题的 PDF / 扫描件。"
+        },
+        legacy: {
+          label: "按长度切分",
+          tooltip: "忽略结构，仅按字符数和分隔符递归切分——原始行为。当上述策略对你的内容效果不佳时使用。"
+        }
+      },
+      overlapWarning: "重叠相对于分块大小较大——分块之间会共享大部分内容。",
+      advancedLabel: "高级选项",
+      tokenLimitLabel: "每块 Token 上限",
+      tokenLimitDescription: "每个分块的硬性 Token 上限（0-8192）。0 = 关闭（仅按字符数）。当嵌入模型 Token 上限较小时启用：MiniLM (256 tok) 用 200，BGE/Cohere (512 tok) 用 400。现代嵌入器（OpenAI、Voyage、Jina-v3）支持 >2000 tokens，保持 0 即可。",
+      languagesLabel: "语言提示",
+      languagesDescription: "限制启发式模式只识别选定的语言（DE/EN/ZH）。留空 = 自动检测。同质化语料库可显式设置以避免跨语言误匹配。",
+      languagesPlaceholder: "自动检测",
+      languageOptions: {
+        de: "德语",
+        en: "英语",
+        zh: "中文"
+      },
+      debug: {
+        toggle: "测试分块效果",
+        toggleHint: "无需重新上传即可对示例文本运行分块器",
+        sampleLabel: "示例文本",
+        samplePlaceholder: "粘贴 Markdown / 纯文本片段以查看当前配置的分块结果…",
+        presetLabel: "载入示例：",
+        samples: {
+          markdown: "Markdown 文档",
+          faq: "FAQ 列表",
+          chapter: "PDF 章节",
+          plain: "纯文本"
+        },
+        runButton: "运行预览",
+        loading: "正在对示例运行分块器…",
+        errorPrefix: "预览失败",
+        selectedTier: "选定策略",
+        rejected: "被拒绝的层级",
+        contextHeader: "上下文标题",
+        fallbackWarning: "策略链已穷尽 — 当前设置无法智能分块此内容",
+        profile: {
+          lines: "行",
+          chars: "字符",
+          headings: "Markdown 标题",
+          pageBreaks: "分页符",
+          chapterMarkers: "章节标记",
+          languages: "语言"
+        },
+        stats: {
+          chunks: "块",
+          truncated: "已截断；总数 {total}"
+        }
+      }
     },
     multimodal: {
       title: "图像处理配置",
@@ -3359,6 +3430,50 @@ export default {
     exitFullscreen: "退出全屏",
     audioLoading: "加载音频中…",
     audioNotSupported: "您的浏览器不支持音频播放",
+  },
+  commandPalette: {
+    placeholder: "搜索知识库、文件、对话…",
+    searching: "搜索中…",
+    clearRecent: "清除",
+    retrieval: "检索参数",
+    untitledSession: "未命名对话",
+    scope: {
+      placeholder: "在本知识库中搜索…",
+      remove: "移除范围过滤（Backspace）",
+    },
+    group: {
+      chunks: "知识库文件",
+      messages: "对话消息",
+      kbs: "知识库",
+      agents: "智能体",
+      sessionsByTitle: "对话（按标题）",
+      commands: "命令",
+      recent: "最近搜索",
+      quickActions: "快捷操作",
+    },
+    match: {
+      vector: "向量",
+      keyword: "关键字",
+    },
+    quick: {
+      newChat: "新建对话",
+      knowledgeBases: "打开知识库",
+      agents: "打开智能体",
+      organizations: "打开共享空间",
+      settings: "打开设置",
+    },
+    empty: {
+      noResults: "没有找到匹配结果",
+      askAi: "直接向 AI 提问",
+      adjustRetrieval: "调整检索参数",
+    },
+    hotkey: {
+      select: "选择",
+      enter: "打开",
+      cmdNumber: "直接打开",
+      cmdEnter: "发起对话",
+      esc: "关闭",
+    },
   },
   knowledgeSearch: {
     title: "搜索",
