@@ -1345,8 +1345,9 @@
                     <h2>{{ $t('agentEditor.im.title') }}</h2>
                     <p class="section-description">
                       {{ $t('agentEditor.im.description') }}
-                      <a href="https://github.com/Tencent/WeKnora/blob/main/docs/IM%E9%9B%86%E6%88%90%E5%BC%80%E5%8F%91%E6%96%87%E6%A1%A3.md" target="_blank" rel="noopener noreferrer" class="section-doc-link">
-                        <t-icon name="link" class="link-icon" />{{ $t('agentEditor.im.docLink') }}
+                      <a href="https://github.com/Tencent/WeKnora/blob/main/docs/IM%E9%9B%86%E6%88%90%E5%BC%80%E5%8F%91%E6%96%87%E6%A1%A3.md" target="_blank" rel="noopener noreferrer" class="doc-link">
+                        {{ $t('agentEditor.im.docLink') }}
+                        <t-icon name="link" class="link-icon" />
                       </a>
                     </p>
                   </div>
@@ -3712,24 +3713,8 @@ const handleSave = async () => {
     margin: 0;
     line-height: 1.5;
 
-    .section-doc-link {
+    .doc-link {
       margin-left: 8px;
-      color: var(--td-brand-color);
-      text-decoration: none;
-      font-weight: 500;
-      display: inline-flex;
-      align-items: center;
-      gap: 3px;
-      transition: color 0.2s ease;
-
-      .link-icon {
-        font-size: 14px;
-      }
-
-      &:hover {
-        color: var(--td-brand-color-hover);
-        text-decoration: underline;
-      }
     }
   }
 }
@@ -3954,48 +3939,6 @@ const handleSave = async () => {
 
   :deep(.t-input) {
     flex: 1;
-  }
-}
-
-// Radio-group 样式优化，符合项目主题风格
-:deep(.t-radio-group) {
-  .t-radio-group--filled {
-    background: var(--td-bg-color-secondarycontainer);
-  }
-  .t-radio-button {
-    border-color: var(--td-component-stroke);
-
-    &:hover:not(.t-is-disabled) {
-      border-color: var(--td-brand-color);
-      color: var(--td-brand-color);
-    }
-
-    &.t-is-checked {
-      background: var(--td-brand-color);
-      border-color: var(--td-brand-color);
-      color: var(--td-text-color-anti);
-
-      &:hover:not(.t-is-disabled) {
-        background: var(--td-brand-color);
-        border-color: var(--td-brand-color-active);
-        color: var(--td-text-color-anti);
-      }
-    }
-
-    // 禁用状态样式
-    &.t-is-disabled {
-      background: var(--td-bg-color-secondarycontainer);
-      border-color: var(--td-component-stroke);
-      color: var(--td-text-color-placeholder);
-      cursor: not-allowed;
-      opacity: 0.6;
-
-      &.t-is-checked {
-        background: var(--td-bg-color-secondarycontainer);
-        border-color: var(--td-component-stroke);
-        color: var(--td-text-color-disabled);
-      }
-    }
   }
 }
 
@@ -4411,65 +4354,6 @@ const handleSave = async () => {
   font-style: italic;
 }
 
-// Checkbox 选中样式
-:deep(.t-checkbox) {
-  &.t-is-checked {
-    .t-checkbox__input {
-      border-color: var(--td-brand-color);
-      background-color: var(--td-brand-color);
-    }
-  }
-  
-  &:hover:not(.t-is-disabled) {
-    .t-checkbox__input {
-      border-color: var(--td-brand-color);
-    }
-  }
-}
-
-// Switch 样式
-:deep(.t-switch) {
-  &.t-is-checked {
-    background-color: var(--td-brand-color);
-    
-    &:hover:not(.t-is-disabled) {
-      background-color: var(--td-brand-color-active);
-    }
-  }
-}
-
-// Slider 样式
-:deep(.t-slider) {
-  .t-slider__track {
-    background-color: var(--td-brand-color);
-  }
-  
-  .t-slider__button {
-    border-color: var(--td-brand-color);
-  }
-}
-
-// Button 主题样式
-:deep(.t-button--theme-primary) {
-  background-color: var(--td-brand-color);
-  border-color: var(--td-brand-color);
-  
-  &:hover:not(.t-is-disabled) {
-    background-color: var(--td-brand-color-active);
-    border-color: var(--td-brand-color-active);
-  }
-}
-
-// Input/Select focus 样式
-:deep(.t-input),
-:deep(.t-textarea),
-:deep(.t-select) {
-  &.t-is-focused,
-  &:focus-within {
-    border-color: var(--td-brand-color);
-    box-shadow: 0 0 0 2px rgba(7, 192, 95, 0.1);
-  }
-}
 
 // textarea 与模板选择器容器
 .textarea-with-template {

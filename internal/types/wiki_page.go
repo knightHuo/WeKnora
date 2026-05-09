@@ -198,10 +198,50 @@ type WikiPageListResponse struct {
 	TotalPages int         `json:"total_pages"`
 }
 
-// WikiGraphData represents the link graph structure for visualization
+// WikiGraphMode enumerates the graph query modes exposed to the API.
+const (
+	// WikiGraphModeOverview returns the top-N most-connected pages as an
+	// overview of the knowledge base. Intended for the first graph open.
+	WikiGraphModeOverview = "overview"
+	// WikiGraphModeEgo returns the neighborhood around a center page up to a
+	// configurable depth. Intended for drill-down interactions.
+	WikiGraphModeEgo = "ego"
+)
+
+// WikiGraphRequest is the service-layer input for graph queries. It is
+// populated by the HTTP handler from query params and passed down to the
+// service, which is responsible for enforcing mode-specific semantics.
+//
+// Limit policy: a non-positive `Limit` means "no cap" and is reserved for
+// internal callers (e.g. wiki lint) that need the full graph. The HTTP
+// handler always clamps `Limit` into a safe range before calling the
+// service so external traffic can never request an uncapped graph.
+type WikiGraphRequest struct {
+	KnowledgeBaseID string
+	Mode            string   // "overview" (default) | "ego"
+	Center          string   // ego mode center slug (required when Mode == "ego")
+	Depth           int      // ego mode BFS depth, >= 1
+	Types           []string // optional page_type filter; empty = no filter
+	Limit           int      // max nodes to return; <= 0 means uncapped
+}
+
+// WikiGraphData represents the link graph structure for visualization.
 type WikiGraphData struct {
 	Nodes []WikiGraphNode `json:"nodes"`
 	Edges []WikiGraphEdge `json:"edges"`
+	Meta  WikiGraphMeta   `json:"meta"`
+}
+
+// WikiGraphMeta describes how the returned subgraph relates to the full
+// knowledge base graph. The frontend uses `Truncated` to decide whether to
+// surface a "showing X of Y" hint and to enable ego-expansion UI.
+type WikiGraphMeta struct {
+	Mode      string `json:"mode"`
+	Total     int    `json:"total"`            // total node count in the KB before filtering/limit
+	Returned  int    `json:"returned"`         // number of nodes actually returned
+	Truncated bool   `json:"truncated"`        // true when Returned < Total (after filters)
+	Center    string `json:"center,omitempty"` // populated in ego mode
+	Depth     int    `json:"depth,omitempty"`  // populated in ego mode
 }
 
 // WikiGraphNode represents a node in the wiki link graph
@@ -251,4 +291,36 @@ type WikiPageIssue struct {
 // TableName specifies the database table name
 func (WikiPageIssue) TableName() string {
 	return "wiki_page_issues"
+}
+
+// WikiIndexEntry is a single row in the structured wiki index response.
+// Only the columns needed to render a clickable directory entry are
+// carried — the backend projects SELECT slug, title, summary so a 40k-
+// page KB does not pay for TEXT content transport on every index open.
+type WikiIndexEntry struct {
+	Slug    string `json:"slug"`
+	Title   string `json:"title"`
+	Summary string `json:"summary"`
+}
+
+// WikiIndexGroup bundles the entries for one page_type into a page-sized
+// slice. `Total` is the full count across the KB for the type; `Items`
+// holds the current paginated window starting at `NextOffset - len(Items)`.
+// An empty NextCursor means the window is already at the end of the type.
+type WikiIndexGroup struct {
+	Type       string           `json:"type"`
+	Total      int64            `json:"total"`
+	Items      []WikiIndexEntry `json:"items"`
+	NextCursor string           `json:"next_cursor,omitempty"`
+}
+
+// WikiIndexResponse is what GET /wiki/index returns. The heavy directory
+// markdown that used to sit in wiki_pages.content is gone — only the LLM-
+// generated intro survives there. Everything else is assembled on demand
+// from the index repo's light-column projection, keeping index reads
+// O(page_size) regardless of KB size.
+type WikiIndexResponse struct {
+	Intro   string           `json:"intro"`
+	Version int              `json:"version"`
+	Groups  []WikiIndexGroup `json:"groups"`
 }

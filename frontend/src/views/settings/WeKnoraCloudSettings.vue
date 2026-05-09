@@ -2,16 +2,18 @@
   <div class="weknoracloud-settings">
     <div class="section-header">
       <h2>{{ $t('settings.weknoraCloud.title') }}</h2>
-      <p class="section-description">{{ $t('settings.weknoraCloud.description') }}</p>
-      <a
-        class="doc-link"
-        href="https://developers.weixin.qq.com/doc/aispeech/knowledge/atomic_capability/atomic_interface.html"
-        target="_blank"
-        rel="noopener noreferrer"
-      >
-        <t-icon name="link" style="font-size: 14px;" />
-        {{ $t('settings.weknoraCloud.viewDocs') }}
-      </a>
+      <p class="section-description">
+        {{ $t('settings.weknoraCloud.description') }}
+        <a
+          class="doc-link"
+          href="https://developers.weixin.qq.com/doc/aispeech/knowledge/atomic_capability/atomic_interface.html"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {{ $t('settings.weknoraCloud.viewDocs') }}
+          <t-icon name="link" class="link-icon" />
+        </a>
+      </p>
     </div>
 
     <!-- 未配置 -->
@@ -31,15 +33,16 @@
 
     <!-- 已配置正常 -->
     <div v-else-if="credentialState === 'configured'" class="credential-status success">
-      <t-icon name="check-circle" style="font-size: 16px; color: var(--td-success-color); flex-shrink: 0;" />
+      <t-icon name="check-circle" style="font-size: 16px; color: var(--td-brand-color); flex-shrink: 0;" />
       <span class="status-text">{{ $t('settings.weknoraCloud.configured') }}</span>
       <t-button
         v-if="!formExpanded"
-        variant="text"
+        variant="outline"
+        theme="default"
         size="small"
-        theme="primary"
         @click="formExpanded = true"
       >
+        <template #icon><t-icon name="edit" /></template>
         {{ $t('settings.weknoraCloud.reconfigure') }}
       </t-button>
     </div>
@@ -190,21 +193,6 @@ onMounted(() => {
   }
 }
 
-.doc-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 13px;
-  color: var(--td-brand-color);
-  text-decoration: none;
-  transition: opacity 0.2s;
-
-  &:hover {
-    opacity: 0.8;
-    text-decoration: underline;
-  }
-}
-
 .credential-warning {
   margin-bottom: 20px;
   background: #fff7ed;
@@ -239,9 +227,10 @@ onMounted(() => {
   }
 
   &.success {
-    background: var(--td-success-color-light);
-    border: 1px solid var(--td-success-color-focus);
-    color: var(--td-success-color);
+    padding: 0;
+    background: transparent;
+    border: none;
+    color: var(--td-text-color-secondary);
   }
 
   .status-text {

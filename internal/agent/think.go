@@ -15,11 +15,12 @@ import (
 
 // streamLLMResult holds accumulated output from a streaming LLM call.
 type streamLLMResult struct {
-	Content      string
-	ToolCalls    []types.LLMToolCall
-	Usage        *types.TokenUsage
-	FinishReason string // actual finish_reason from LLM (captured from last stream chunk)
-	StreamError  string // error message from stream (e.g., timeout), kept separate from Content
+	Content         string
+	ThinkingContent string // accumulated thinking/reasoning content, kept separate from answer
+	ToolCalls       []types.LLMToolCall
+	Usage           *types.TokenUsage
+	FinishReason    string // actual finish_reason from LLM (captured from last stream chunk)
+	StreamError     string // error message from stream (e.g., timeout), kept separate from Content
 }
 
 // streamLLMToEventBus streams LLM response through EventBus (generic method)
@@ -64,7 +65,11 @@ func (e *AgentEngine) streamLLMToEventBus(
 		if chunk.Content != "" {
 			isExtracted := chunk.Data != nil && chunk.Data["source"] != nil
 			if !isExtracted {
-				result.Content += chunk.Content
+				if chunk.ResponseType == types.ResponseTypeThinking {
+					result.ThinkingContent += chunk.Content
+				} else {
+					result.Content += chunk.Content
+				}
 			}
 		}
 
@@ -353,8 +358,14 @@ func (e *AgentEngine) callLLMWithRetry(
 		logger.Infof(ctx, "[Agent][Round-%d] LLM responded: finish=%s, content=%d chars, tools=%v",
 			round, response.FinishReason, len(response.Content), tcNames)
 	} else {
-		logger.Infof(ctx, "[Agent][Round-%d] LLM responded: finish=%s, content=%d chars",
+		logger.Infof(ctx, "[Agent][Round-%d] LLM responded: finish=%s, content=%d chars, tool_calls=0",
 			round, response.FinishReason, len(response.Content))
+		// Early signal for natural-stop path: this round will be analyzed as a
+		// likely final answer (no tool call branch).
+		if response.FinishReason == "stop" {
+			logger.Infof(ctx, "[Agent][Round-%d] Natural-stop candidate detected (finish=stop, tool_calls=0, content=%d chars)",
+				round, len(response.Content))
+		}
 	}
 	if response.Content != "" {
 		preview := response.Content

@@ -1237,7 +1237,7 @@ onUnmounted(() => {
 <style scoped lang="less">
 .org-list-container {
   margin: 0 16px 0 0;
-  height: calc(100vh);
+  height: 100%;
   box-sizing: border-box;
   flex: 1;
   display: flex;
@@ -1951,15 +1951,6 @@ onUnmounted(() => {
     font-family: var(--app-font-family);
   }
 
-  .t-button--theme-primary {
-    background-color: var(--td-brand-color);
-    border-color: var(--td-brand-color);
-
-    &:hover {
-      background-color: var(--td-brand-color);
-      border-color: var(--td-brand-color);
-    }
-  }
 }
 
 // 邀请预览弹框 - 参考 FAQ 导入弹窗风格，更紧凑

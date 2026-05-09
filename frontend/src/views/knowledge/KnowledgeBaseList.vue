@@ -1248,7 +1248,7 @@ const handleUploadFinishedEvent = (event: Event) => {
 <style scoped lang="less">
 .kb-list-container {
   margin: 0 16px 0 0;
-  height: calc(100vh);
+  height: 100%;
   box-sizing: border-box;
   flex: 1;
   display: flex;
@@ -2429,14 +2429,5 @@ const handleUploadFinishedEvent = (event: Event) => {
     font-family: var(--app-font-family);
   }
 
-  .t-button--theme-primary {
-    background-color: var(--td-brand-color);
-    border-color: var(--td-brand-color);
-
-    &:hover {
-      background-color: var(--td-brand-color-active);
-      border-color: var(--td-brand-color-active);
-    }
-  }
 }
 </style>

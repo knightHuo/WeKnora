@@ -30,11 +30,12 @@
         </div>
         <div class="setting-control">
           <div class="api-key-control">
-            <t-input 
-              v-model="displayApiKey" 
-              readonly 
+            <t-input
+              v-model="displayApiKey"
+              readonly
               type="text"
-              style="width: 100%; font-family: var(--app-font-family-mono); font-size: 12px;"
+              class="mono-text-input"
+              style="width: 100%;"
             />
             <t-button 
               size="small" 
@@ -77,7 +78,8 @@
               :model-value="apiBaseUrlDisplay"
               readonly
               type="text"
-              style="width: 100%; font-family: var(--app-font-family-mono); font-size: 12px;"
+              class="mono-text-input"
+              style="width: 100%;"
             />
             <t-button
               size="small"
@@ -136,7 +138,8 @@
                 :model-value="wailsApiLanBaseURL"
                 readonly
                 type="text"
-                style="width: 100%; font-family: var(--app-font-family-mono); font-size: 12px;"
+                class="mono-text-input"
+                style="width: 100%;"
               />
               <t-button
                 size="small"
@@ -571,6 +574,16 @@ onMounted(async () => {
   width: 100%;
 }
 
+// TDesign's <t-input> forwards `style=""` to its wrapper but applies
+// `font: var(--td-font-body-medium)` (a shorthand) to the real <input>
+// inside, which silently resets font-family. Reach into the inner input
+// explicitly so the code font actually takes effect for API keys, URLs,
+// etc. Scoped via `.mono-text-input` so this only applies where we opt in.
+.mono-text-input :deep(input) {
+  font-family: var(--app-font-family-mono);
+  font-size: 12px;
+}
+
 .section-header {
   margin-bottom: 32px;
 
@@ -642,23 +655,7 @@ onMounted(async () => {
   }
 
   .doc-link {
-    color: var(--td-brand-color);
-    text-decoration: none;
-    font-weight: 500;
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
     cursor: pointer;
-    transition: all 0.2s ease;
-
-    &:hover {
-      color: var(--td-brand-color-active);
-      text-decoration: underline;
-    }
-
-    .link-icon {
-      font-size: 12px;
-    }
   }
 }
 

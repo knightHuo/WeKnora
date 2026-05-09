@@ -208,6 +208,57 @@ func (r *wikiPageRepository) ListByType(ctx context.Context, kbID string, pageTy
 	return pages, nil
 }
 
+// ListByTypeLight projects only the columns needed to render an index
+// directory entry (slug, title, summary) and paginates by title ASC.
+// This keeps the GET /wiki/index response cheap on KBs with tens of
+// thousands of pages — the old path loaded every row including its TEXT
+// content just to throw the content away on the way out.
+//
+// Archived pages are excluded. `limit` clamps to [1, 200]; `offset` is
+// honored as-is. Returns the total non-archived count for the type
+// alongside the page so the caller can render "showing N of M".
+func (r *wikiPageRepository) ListByTypeLight(
+	ctx context.Context,
+	kbID string,
+	pageType string,
+	limit int,
+	offset int,
+) ([]types.WikiIndexEntry, int64, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 200 {
+		limit = 200
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	base := r.db.WithContext(ctx).
+		Model(&types.WikiPage{}).
+		Where("knowledge_base_id = ? AND page_type = ? AND status <> ?",
+			kbID, pageType, types.WikiPageStatusArchived)
+
+	var total int64
+	if err := base.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	if total == 0 {
+		return nil, 0, nil
+	}
+
+	var entries []types.WikiIndexEntry
+	if err := base.
+		Select("slug", "title", "summary").
+		Order("title ASC").
+		Limit(limit).
+		Offset(offset).
+		Scan(&entries).Error; err != nil {
+		return nil, 0, err
+	}
+	return entries, total, nil
+}
+
 // ListBySourceRef retrieves all wiki pages that reference a given source knowledge ID.
 // Handles both old format ("knowledgeID") and new format ("knowledgeID|title") in source_refs JSON array.
 func (r *wikiPageRepository) ListBySourceRef(ctx context.Context, kbID string, sourceKnowledgeID string) ([]*types.WikiPage, error) {
@@ -329,6 +380,19 @@ func escapeLikePattern(s string) string {
 
 // Search performs case-insensitive POSIX regex search on wiki pages within a knowledge base.
 // The query is interpreted as a PostgreSQL regular expression (via ~*).
+//
+// Results are ranked by where the query hit, highest-relevance first:
+//
+//	title    hit → rank 4 (most obvious intent: user typed what the page is called)
+//	slug     hit → rank 3 (url-like identifiers, direct jump)
+//	summary  hit → rank 2 (short authored abstract)
+//	content  hit → rank 1 (body mention — often surfaces unrelated pages whose
+//	                       prose merely mentions the query as trivia)
+//
+// Without this ranking, a user searching for "王新" on a 4万-page wiki will
+// see pages like "华为" or "Index" ahead of the actual 王新 page just
+// because they mention 王新 in their body and were updated more recently.
+// updated_at stays as the tiebreaker so same-rank ties stay deterministic.
 func (r *wikiPageRepository) Search(ctx context.Context, kbID string, query string, limit int) ([]*types.WikiPage, error) {
 	if limit <= 0 {
 		limit = 10
@@ -337,12 +401,24 @@ func (r *wikiPageRepository) Search(ctx context.Context, kbID string, query stri
 		limit = 50
 	}
 
+	// CASE expression is evaluated per-row during SELECT; we order by the
+	// alias so the DB only computes the rank once. Parameterized four
+	// times with the same regex to avoid coupling to GORM's positional
+	// arg rewriting quirks.
+	rankExpr := "CASE " +
+		"WHEN title ~* ? THEN 4 " +
+		"WHEN slug ~* ? THEN 3 " +
+		"WHEN summary ~* ? THEN 2 " +
+		"WHEN content ~* ? THEN 1 " +
+		"ELSE 0 END AS match_rank"
+
 	var pages []*types.WikiPage
 	if err := r.db.WithContext(ctx).
+		Select("*, "+rankExpr, query, query, query, query).
 		Where("knowledge_base_id = ? AND (title ~* ? OR content ~* ? OR summary ~* ? OR slug ~* ?)",
 			kbID, query, query, query, query).
 		Where("status != ?", "archived").
-		Order("updated_at DESC").
+		Order("match_rank DESC, updated_at DESC").
 		Limit(limit).
 		Find(&pages).Error; err != nil {
 		return nil, err

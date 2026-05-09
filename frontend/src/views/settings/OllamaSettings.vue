@@ -48,7 +48,7 @@
             </t-tag>
             <t-button 
               size="small" 
-              variant="outline"
+              variant="text"
               :loading="testing"
               @click="testConnection"
             >
@@ -94,7 +94,7 @@
           <h3>{{ $t('ollamaSettings.download.title') }}</h3>
           <p>
             {{ $t('ollamaSettings.download.descPrefix') }}
-            <a href="https://ollama.com/search" target="_blank" rel="noopener noreferrer" class="model-link">
+            <a href="https://ollama.com/search" target="_blank" rel="noopener noreferrer" class="doc-link">
               {{ $t('ollamaSettings.download.browse') }}
               <t-icon name="link" class="link-icon" />
             </a>
@@ -109,13 +109,16 @@
             :placeholder="$t('ollamaSettings.download.placeholder')"
             style="flex: 1;"
           />
-          <t-button 
-            theme="primary"
+          <t-button
+            variant="base"
+            theme="default"
             size="small"
+            class="download-btn"
             :loading="downloading"
             :disabled="!downloadModelName.trim()"
             @click="downloadModel"
           >
+            <template #icon><t-icon name="download" /></template>
             {{ $t('ollamaSettings.download.download') }}
           </t-button>
         </div>
@@ -489,24 +492,6 @@ onMounted(async () => {
       line-height: 1.5;
     }
 
-    .model-link {
-      color: var(--td-brand-color);
-      text-decoration: none;
-      font-weight: 500;
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      transition: all 0.2s ease;
-
-      &:hover {
-        color: var(--td-brand-color-active);
-        text-decoration: underline;
-      }
-
-      .link-icon {
-        font-size: 12px;
-      }
-    }
   }
 }
 
@@ -575,6 +560,11 @@ onMounted(async () => {
     display: flex;
     gap: 8px;
     align-items: center;
+
+    .download-btn {
+      flex-shrink: 0;
+      height: 32px;
+    }
   }
 
   .download-progress {

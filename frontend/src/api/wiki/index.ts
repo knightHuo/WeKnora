@@ -37,9 +37,19 @@ export interface WikiPageListResponse {
   total_pages: number;
 }
 
+export interface WikiGraphMeta {
+  mode: 'overview' | 'ego' | string;
+  total: number;
+  returned: number;
+  truncated: boolean;
+  center?: string;
+  depth?: number;
+}
+
 export interface WikiGraphData {
   nodes: { slug: string; title: string; page_type: string; link_count: number }[];
   edges: { source: string; target: string }[];
+  meta: WikiGraphMeta;
 }
 
 export interface WikiStats {
@@ -105,16 +115,113 @@ export function deleteWikiPage(kbId: string, slug: string) {
   return del(`/api/v1/knowledgebase/${kbId}/wiki/pages/${encodeSlugPath(slug)}`);
 }
 
-export function getWikiIndex(kbId: string) {
-  return get(`/api/v1/knowledgebase/${kbId}/wiki/index`);
+export interface WikiIndexEntryDTO {
+  slug: string;
+  title: string;
+  summary: string;
 }
 
-export function getWikiLog(kbId: string) {
-  return get(`/api/v1/knowledgebase/${kbId}/wiki/log`);
+export interface WikiIndexGroup {
+  type: string;
+  total: number;
+  items: WikiIndexEntryDTO[];
+  next_cursor?: string;
 }
 
-export function getWikiGraph(kbId: string) {
-  return get(`/api/v1/knowledgebase/${kbId}/wiki/graph`);
+export interface WikiIndexResponse {
+  intro: string;
+  version: number;
+  groups: WikiIndexGroup[];
+}
+
+// getWikiIndex fetches the structured index view for a wiki KB. The
+// backend replaced the legacy "markdown blob of intro + directory" with
+// { intro, groups } so a 40k-page wiki no longer round-trips multiple
+// megabytes on every index open. Pass `types` to restrict which
+// page_type buckets come back; `limit` bounds the per-group window;
+// `cursor` resumes from a previous response.
+export function getWikiIndex(
+  kbId: string,
+  params?: { types?: string[]; limit?: number; cursor?: string },
+) {
+  const query = new URLSearchParams();
+  if (params) {
+    if (params.types && params.types.length > 0) query.set('types', params.types.join(','));
+    if (params.limit !== undefined) query.set('limit', String(params.limit));
+    if (params.cursor) query.set('cursor', params.cursor);
+  }
+  const qs = query.toString();
+  const suffix = qs ? `?${qs}` : '';
+  return get(`/api/v1/knowledgebase/${kbId}/wiki/index${suffix}`);
+}
+
+export interface WikiLogPageRef {
+  slug: string;
+  title?: string;
+}
+
+export interface WikiLogEntry {
+  id: number;
+  tenant_id: number;
+  knowledge_base_id: string;
+  action: string;
+  knowledge_id: string;
+  doc_title: string;
+  summary: string;
+  // Each ref carries both slug (for navigation) and title (captured at
+  // ingest time for display). Legacy rows written before the title
+  // column was added surface as refs with an empty title; render falls
+  // back to the slug in that case.
+  pages_affected: WikiLogPageRef[];
+  created_at: string;
+}
+
+export interface WikiLogListResponse {
+  entries: WikiLogEntry[];
+  next_cursor?: string;
+}
+
+// getWikiLog fetches a page of wiki operation events (newest first). Pass the
+// `next_cursor` from the previous response back as `cursor` to load more;
+// an empty / missing `next_cursor` signals end-of-feed. `limit` is clamped
+// server-side to [1, 200] and defaults to 50.
+export function getWikiLog(kbId: string, params?: { cursor?: string; limit?: number }) {
+  const query = new URLSearchParams();
+  if (params) {
+    if (params.cursor) query.set('cursor', params.cursor);
+    if (params.limit !== undefined) query.set('limit', String(params.limit));
+  }
+  const qs = query.toString();
+  const suffix = qs ? `?${qs}` : '';
+  return get(`/api/v1/knowledgebase/${kbId}/wiki/log${suffix}`);
+}
+
+export interface WikiGraphQueryParams {
+  mode?: 'overview' | 'ego';
+  center?: string;
+  depth?: number;
+  types?: string[];
+  limit?: number;
+}
+
+// getWikiGraph fetches a slice of the wiki link graph. Without params the
+// backend returns the top-500 most-connected pages (overview mode). Pass
+// `mode: 'ego', center: <slug>` to drill into a specific page's neighborhood.
+// For knowledge bases with tens of thousands of pages the overview cap is
+// what prevents the browser from choking on a 30MB payload / 100k SVG nodes.
+export function getWikiGraph(kbId: string, params?: WikiGraphQueryParams) {
+  const query = new URLSearchParams();
+  if (params) {
+    if (params.mode) query.set('mode', params.mode);
+    if (params.center) query.set('center', params.center);
+    if (params.depth !== undefined) query.set('depth', String(params.depth));
+    if (params.limit !== undefined) query.set('limit', String(params.limit));
+    if (params.types && params.types.length > 0) {
+      query.set('types', params.types.join(','));
+    }
+  }
+  const qs = query.toString();
+  return get(`/api/v1/knowledgebase/${kbId}/wiki/graph${qs ? '?' + qs : ''}`);
 }
 
 export function getWikiStats(kbId: string) {

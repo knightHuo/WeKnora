@@ -57,6 +57,26 @@ const (
 	// and are picked up by the follow-up task.
 	wikiMaxDocsPerBatch = 5
 
+	// wikiFailCountKeyPrefix is the Redis key prefix for per-document failure
+	// counters. Key: wiki:failcount:{kbID}:{knowledgeID} → integer.
+	// Incremented each time requeueFailedOps retries an op; reset to 0 on
+	// successful ingest. Once the counter exceeds wikiMaxFailRetries the op is
+	// dropped instead of re-queued, preventing LLM-timeout storms from causing
+	// unbounded wiki:pending growth.
+	wikiFailCountKeyPrefix = "wiki:failcount:"
+
+	// wikiMaxFailRetries is the maximum number of times a single document op
+	// may be re-queued via requeueFailedOps before it is permanently dropped.
+	// 5 retries ≈ five full batch cycles (each with a ~30 s delay), giving
+	// transient LLM errors a fair chance to recover without letting a
+	// persistently-broken doc clog the queue indefinitely.
+	wikiMaxFailRetries = 5
+
+	// wikiIngestMaxRetry controls asynq retry budget for wiki:ingest tasks.
+	// Keep this moderate: lock conflicts already retry every 15s via
+	// asynqRetryDelayFunc, and follow-up/retract paths fire quickly.
+	wikiIngestMaxRetry = 10
+
 	// wikiDeletedKeyPrefix is the Redis key prefix for "recently deleted
 	// knowledge" tombstones. Key: wiki:deleted:{kbID}:{knowledgeID}. Written
 	// by cleanupWikiOnKnowledgeDelete so that any wiki_ingest task still in
@@ -82,6 +102,17 @@ const (
 	// tick (GC pause, Redis blip) doesn't let the lock slip out from under a
 	// live handler.
 	wikiActiveLockRenew = 20 * time.Second
+
+	// wikiLLMMaxAttempts is the total attempt count (initial + retries) for
+	// every LLM call routed through generateWithTemplate. 3 was chosen to
+	// absorb transient 504/timeouts from upstream gateways without
+	// materially prolonging task runtime when the remote is genuinely down.
+	wikiLLMMaxAttempts = 3
+
+	// wikiLLMBackoffBase is the base delay for the exponential backoff
+	// between retry attempts. The nth retry waits base << (n-1) — so with
+	// a 2s base we wait 2s, 4s, 8s between attempts.
+	wikiLLMBackoffBase = 2 * time.Second
 )
 
 // WikiDeletedTombstoneKey returns the Redis key used to mark a knowledge as
@@ -141,6 +172,7 @@ type wikiIngestService struct {
 	chunkRepo    interfaces.ChunkRepository
 	modelService interfaces.ModelService
 	task         interfaces.TaskEnqueuer
+	logEntrySvc  interfaces.WikiLogEntryService
 	redisClient  *redis.Client // nil in Lite mode (no Redis)
 	// liteLocks provides per-KB mutual exclusion in Lite mode (no Redis).
 	// Keys are kbID strings; values are unused (presence = locked).
@@ -155,6 +187,7 @@ func NewWikiIngestService(
 	chunkRepo interfaces.ChunkRepository,
 	modelService interfaces.ModelService,
 	task interfaces.TaskEnqueuer,
+	logEntrySvc interfaces.WikiLogEntryService,
 	redisClient *redis.Client,
 ) interfaces.TaskHandler {
 	svc := &wikiIngestService{
@@ -164,6 +197,7 @@ func NewWikiIngestService(
 		chunkRepo:    chunkRepo,
 		modelService: modelService,
 		task:         task,
+		logEntrySvc:  logEntrySvc,
 		redisClient:  redisClient,
 	}
 	return svc
@@ -200,6 +234,10 @@ func EnqueueWikiIngest(ctx context.Context, task interfaces.TaskEnqueuer, redisC
 	// Push to Redis pending list (if Redis available)
 	if redisClient != nil {
 		pendingKey := wikiPendingKeyPrefix + kbID
+		// Reset stale fail counter for fresh user-triggered ingest enqueue.
+		// This gives a newly re-ingested document a full retry budget.
+		failKey := wikiFailCountKeyPrefix + kbID + ":" + knowledgeID
+		redisClient.Del(ctx, failKey)
 		op := WikiPendingOp{
 			Op:          WikiOpIngest,
 			KnowledgeID: knowledgeID,
@@ -222,7 +260,7 @@ func EnqueueWikiIngest(ctx context.Context, task interfaces.TaskEnqueuer, redisC
 
 	t := asynq.NewTask(types.TypeWikiIngest, payloadBytes,
 		asynq.Queue("low"),
-		asynq.MaxRetry(10), // Increased from 3 to 10 to ensure it can outlast the 5-minute active lock TTL
+		asynq.MaxRetry(wikiIngestMaxRetry),
 		asynq.Timeout(60*time.Minute),
 		asynq.ProcessIn(wikiIngestDelay),
 	)
@@ -262,7 +300,7 @@ func EnqueueWikiRetract(ctx context.Context, task interfaces.TaskEnqueuer, redis
 	payloadBytes, _ := json.Marshal(ingestPayload)
 	t := asynq.NewTask(types.TypeWikiIngest, payloadBytes,
 		asynq.Queue("low"),
-		asynq.MaxRetry(10), // Increased from 3 to 10 to outlast the active lock TTL
+		asynq.MaxRetry(wikiIngestMaxRetry),
 		asynq.Timeout(60*time.Minute),
 		asynq.ProcessIn(5*time.Second), // Retract can trigger the batch quickly
 	)
@@ -353,6 +391,26 @@ func (s *wikiIngestService) requeueFailedOps(ctx context.Context, payload WikiIn
 	if s.redisClient != nil {
 		pendingKey := wikiPendingKeyPrefix + payload.KnowledgeBaseID
 		for _, op := range ops {
+			// Increment failure counter; drop the op permanently once it
+			// exceeds wikiMaxFailRetries to prevent unbounded queue growth
+			// caused by persistent LLM timeouts or extraction errors.
+			failKey := wikiFailCountKeyPrefix + payload.KnowledgeBaseID + ":" + op.KnowledgeID
+			count, err := s.redisClient.Incr(ctx, failKey).Result()
+			if err != nil {
+				logger.Warnf(ctx, "wiki ingest: failed to increment fail count for %s: %v", op.KnowledgeID, err)
+				// Fall through and requeue anyway — better to retry than silently drop
+			} else {
+				// Refresh TTL on every update so the key doesn't outlast its usefulness
+				s.redisClient.Expire(ctx, failKey, wikiPendingTTL)
+				if count > wikiMaxFailRetries {
+					logger.Warnf(ctx, "wiki ingest: dropping op %s (%s) after %d failures (limit %d)", op.KnowledgeID, op.DocTitle, count, wikiMaxFailRetries)
+					// Drop-path cleanup: avoid leaking stale counters that can
+					// poison future manual re-ingest within TTL window.
+					s.redisClient.Del(ctx, failKey)
+					continue
+				}
+			}
+
 			data, err := json.Marshal(op)
 			if err != nil {
 				logger.Warnf(ctx, "wiki ingest: failed to marshal op for requeue: %v", err)
@@ -362,7 +420,7 @@ func (s *wikiIngestService) requeueFailedOps(ctx context.Context, payload WikiIn
 				logger.Warnf(ctx, "wiki ingest: failed to requeue op %s: %v", op.KnowledgeID, err)
 				continue
 			}
-			logger.Infof(ctx, "wiki ingest: re-queued failed op %s (%s) for retry", op.KnowledgeID, op.DocTitle)
+			logger.Infof(ctx, "wiki ingest: re-queued failed op %s (%s) for retry (attempt %d/%d)", op.KnowledgeID, op.DocTitle, count, wikiMaxFailRetries)
 		}
 		return
 	}
@@ -379,7 +437,7 @@ func (s *wikiIngestService) requeueFailedOps(ctx context.Context, payload WikiIn
 		payloadBytes, _ := json.Marshal(retryPayload)
 		t := asynq.NewTask(types.TypeWikiIngest, payloadBytes,
 			asynq.Queue("low"),
-			asynq.MaxRetry(10),
+			asynq.MaxRetry(wikiIngestMaxRetry),
 			asynq.Timeout(60*time.Minute),
 			asynq.ProcessIn(wikiIngestDelay),
 		)
@@ -395,8 +453,11 @@ func (s *wikiIngestService) requeueFailedOps(ctx context.Context, payload WikiIn
 type docIngestResult struct {
 	KnowledgeID string
 	DocTitle    string
-	Summary     string   // one-line summary of the document (from summary page)
-	Pages       []string // affected page slugs
+	Summary     string // one-line summary of the document (from summary page)
+	// Pages records the wiki pages this document touched, carrying both
+	// the slug (for navigation / retract lookups) and the human-readable
+	// title captured at ingest time (for the log feed's display layer).
+	Pages []types.WikiLogPageRef
 }
 
 // WikiBatchContext holds shared data across Map and Reduce phases
@@ -472,6 +533,96 @@ func previewStringSlice(items []string, limit int) string {
 		return fmt.Sprintf("[%s ...(+%d)]", strings.Join(out, ", "), n-limit)
 	}
 	return fmt.Sprintf("[%s]", strings.Join(out, ", "))
+}
+
+// wikiLinkRE matches `[[slug]]` and `[[slug|display text]]` references
+// inside wiki page content. The slug capture group rejects whitespace and
+// the closing-bracket / pipe characters so we don't accidentally swallow
+// adjacent text. Display text (group 2) is optional.
+var wikiLinkRE = regexp.MustCompile(`\[\[([^\[\]\|\s]+)(?:\|([^\]]+))?\]\]`)
+
+// sanitizeDeadSummaryLinks rewrites the summary pages produced by THIS
+// batch to remove `[[slug]]` / `[[slug|display]]` references that point
+// at slugs whose entity/concept page generation failed in reduce.
+//
+// Background: WikiSummaryPrompt instructs the LLM to embed wiki links
+// for every extracted slug it knows about, but slug extraction happens
+// during map (parallel with summary generation) and the actual page
+// creation happens later in reduce. When reduce's WikiPageModifyPrompt
+// fails on an entity/concept slug the page never gets written — and
+// the already-persisted summary is left holding a `[[entity/foo|name]]`
+// link that 404s. This pass replaces those dead links with their
+// display text so the summary degrades gracefully.
+//
+// Pure text replacement, no LLM call. Scoped to the doc-summary slugs
+// in this batch (`summary/<slugify(knowledgeID)>`), keeping the work
+// proportional to batch size.
+func (s *wikiIngestService) sanitizeDeadSummaryLinks(
+	ctx context.Context,
+	kbID string,
+	docResults []*docIngestResult,
+	failedSlugs map[string]struct{},
+) {
+	if len(failedSlugs) == 0 || len(docResults) == 0 {
+		return
+	}
+	for _, r := range docResults {
+		if r == nil || r.KnowledgeID == "" {
+			continue
+		}
+		summarySlug := "summary/" + slugify(r.KnowledgeID)
+		page, err := s.wikiService.GetPageBySlug(ctx, kbID, summarySlug)
+		if err != nil || page == nil {
+			continue
+		}
+		newContent, changed := stripDeadWikiLinks(page.Content, failedSlugs)
+		if !changed {
+			continue
+		}
+		page.Content = newContent
+		if err := s.wikiService.UpdateAutoLinkedContent(ctx, page); err != nil {
+			logger.Warnf(ctx, "wiki ingest: failed to sanitize dead links in summary %s: %v", summarySlug, err)
+			continue
+		}
+		logger.Infof(ctx, "wiki ingest: sanitized dead [[slug]] refs in summary %s", summarySlug)
+	}
+}
+
+// stripDeadWikiLinks replaces `[[slug]]` / `[[slug|display]]` references
+// with plain text whenever `slug` is in the dead set. The display text
+// (when present) is preserved verbatim; otherwise the slug's last path
+// segment is humanized into a fallback label so the surrounding sentence
+// still reads naturally.
+func stripDeadWikiLinks(content string, deadSlugs map[string]struct{}) (string, bool) {
+	if len(deadSlugs) == 0 || content == "" {
+		return content, false
+	}
+	changed := false
+	out := wikiLinkRE.ReplaceAllStringFunc(content, func(match string) string {
+		sub := wikiLinkRE.FindStringSubmatch(match)
+		if len(sub) < 2 {
+			return match
+		}
+		slug := sub[1]
+		if _, dead := deadSlugs[slug]; !dead {
+			return match
+		}
+		changed = true
+		display := ""
+		if len(sub) >= 3 {
+			display = strings.TrimSpace(sub[2])
+		}
+		if display != "" {
+			return display
+		}
+		// Derive a readable label from the slug's tail segment so we
+		// don't leave a raw "entity/foo-bar" smear in the prose.
+		parts := strings.Split(slug, "/")
+		label := parts[len(parts)-1]
+		label = strings.ReplaceAll(label, "-", " ")
+		return label
+	})
+	return out, changed
 }
 
 // cleanDeadLinks removes [[wiki-links]] that point to archived or deleted pages.
@@ -663,62 +814,72 @@ type combinedExtraction struct {
 	Concepts []extractedItem `json:"concepts"`
 }
 
-// rebuildIndexPage regenerates the index page.
+// rebuildIndexPage refreshes the LLM-generated intro that sits on the
+// index wiki_pages row.
 //
-// Strategy: Index = LLM-generated intro (stored in Summary field) + code-generated directory.
-//   - Intro: stored in indexPage.Summary. First time: generated from document summaries.
-//     Subsequent: incrementally updated with changeDescription.
-//   - Directory: pure code, rebuilt every time. O(N) string concat, no LLM.
+// History: the index page used to store "intro + full directory listing" as
+// a single multi-MB markdown blob in content. Every ingest batch rewrote
+// the whole column, which on KBs with tens of thousands of pages caused
+// O(N) TOAST writes per batch. The directory was lifted out into the
+// structured GET /wiki/index endpoint (see wikiPageService.GetIndexView),
+// and this method now only maintains the intro.
+//
+// Intro lifecycle:
+//   - First time (empty or legacy placeholder): generate from all document
+//     summaries via WikiIndexIntroPrompt.
+//   - Subsequent calls with a change description: incremental update via
+//     WikiIndexIntroUpdatePrompt so the intro reflects what just landed.
+//   - No change description: keep the existing intro untouched.
+//
+// The new intro is written to both Content and Summary so readers that
+// still fall back to Summary (older clients, legacy migrations) stay in
+// sync with the column the view actually renders.
 func (s *wikiIngestService) rebuildIndexPage(ctx context.Context, chatModel chat.Chat, payload WikiIngestPayload, changeDesc, lang string) error {
 	indexPage, _ := s.wikiService.GetIndex(ctx, payload.KnowledgeBaseID)
 	if indexPage == nil {
 		return nil
 	}
 
-	// List all live pages
-	allPages, err := s.wikiService.ListAllPages(ctx, payload.KnowledgeBaseID)
+	// Gather just the Summary-type pages the LLM needs for intro framing.
+	// We do NOT load or iterate every wiki page here — the directory is
+	// now assembled on demand by GetIndexView, which is the only reader
+	// that needs the full enumeration.
+	summaries, err := s.wikiService.ListByType(ctx, payload.KnowledgeBaseID, types.WikiPageTypeSummary)
 	if err != nil {
 		return err
 	}
 
-	typeOrder := []string{
-		types.WikiPageTypeSummary, types.WikiPageTypeEntity, types.WikiPageTypeConcept,
-		types.WikiPageTypeSynthesis, types.WikiPageTypeComparison,
-	}
-	typeLabels := map[string]string{
-		types.WikiPageTypeSummary: "Summary", types.WikiPageTypeEntity: "Entity",
-		types.WikiPageTypeConcept: "Concept", types.WikiPageTypeSynthesis: "Synthesis",
-		types.WikiPageTypeComparison: "Comparison",
-	}
-
-	grouped := make(map[string][]*types.WikiPage)
-	totalPages := 0
-	for _, p := range allPages {
-		if p.PageType == types.WikiPageTypeIndex || p.PageType == types.WikiPageTypeLog {
-			continue
-		}
-		if p.Status == types.WikiPageStatusArchived {
-			continue
-		}
-		grouped[p.PageType] = append(grouped[p.PageType], p)
-		totalPages++
-	}
-
-	// Build document summaries listing (only summary-type pages — they represent documents)
 	var docSummaries strings.Builder
-	for _, p := range grouped[types.WikiPageTypeSummary] {
+	for _, p := range summaries {
+		if p == nil || p.Status == types.WikiPageStatusArchived {
+			continue
+		}
 		fmt.Fprintf(&docSummaries, "<document>\n<title>%s</title>\n<summary>%s</summary>\n</document>\n\n", p.Title, p.Summary)
 	}
 	if docSummaries.Len() == 0 {
 		docSummaries.WriteString("(no documents yet)")
 	}
 
-	// Generate or update intro
-	existingIntro := indexPage.Summary
-	var intro string
+	// The intro lives on both Content and Summary. Prefer Content since
+	// that's what the new index view returns; fall back to Summary for
+	// rows written before this refactor so the incremental-update prompt
+	// has something to work with.
+	existingIntro := strings.TrimSpace(indexPage.Content)
+	if existingIntro == "" {
+		existingIntro = strings.TrimSpace(indexPage.Summary)
+	}
+	// Detect the legacy "intro + directory" payload. Such rows embed the
+	// fence-separated "## Summary" sections right after the intro, so we
+	// clip everything from the first directory heading onward to keep the
+	// intro length bounded when we feed it back into the update prompt.
+	if idx := strings.Index(existingIntro, "\n## "); idx >= 0 {
+		existingIntro = strings.TrimSpace(existingIntro[:idx])
+	}
 
-	if existingIntro == "" || existingIntro == "Wiki index - table of contents" {
-		// First time — generate intro from scratch
+	var intro string
+	switch {
+	case existingIntro == "" || existingIntro == "Wiki index - table of contents":
+		// First time — generate intro from scratch.
 		generatedIntro, genErr := s.generateWithTemplate(ctx, chatModel, agent.WikiIndexIntroPrompt, map[string]string{
 			"DocumentSummaries": docSummaries.String(),
 			"Language":          lang,
@@ -728,8 +889,8 @@ func (s *wikiIngestService) rebuildIndexPage(ctx context.Context, chatModel chat
 		} else {
 			intro = strings.TrimSpace(generatedIntro)
 		}
-	} else if changeDesc != "" {
-		// Incremental update — tell LLM what changed
+	case changeDesc != "":
+		// Incremental update — tell the LLM what changed.
 		updatedIntro, genErr := s.generateWithTemplate(ctx, chatModel, agent.WikiIndexIntroUpdatePrompt, map[string]string{
 			"ExistingIntro":     existingIntro,
 			"ChangeDescription": changeDesc,
@@ -741,45 +902,23 @@ func (s *wikiIngestService) rebuildIndexPage(ctx context.Context, chatModel chat
 		} else {
 			intro = strings.TrimSpace(updatedIntro)
 		}
-	} else {
-		intro = existingIntro // no change description, keep as-is
+	default:
+		// No change description and an existing intro: leave it as-is so
+		// we don't bump the version for a no-op.
+		intro = existingIntro
 	}
 
-	// Build directory (pure code, no LLM)
-	var dir strings.Builder
-	for _, pt := range typeOrder {
-		pages := grouped[pt]
-		if len(pages) == 0 {
-			continue
-		}
-		fmt.Fprintf(&dir, "\n## %s (%d)\n\n", typeLabels[pt], len(pages))
-		for _, p := range pages {
-			summary := p.Summary
-			fmt.Fprintf(&dir, "[[%s]] — %s\n", p.Slug, summary)
-		}
-	}
-	for pt, pages := range grouped {
-		inOrder := false
-		for _, o := range typeOrder {
-			if o == pt {
-				inOrder = true
-				break
-			}
-		}
-		if inOrder || len(pages) == 0 {
-			continue
-		}
-		fmt.Fprintf(&dir, "\n## %s (%d)\n\n", pt, len(pages))
-		for _, p := range pages {
-			fmt.Fprintf(&dir, "[[%s]] — %s\n", p.Slug, p.Summary)
-		}
-	}
-	if totalPages == 0 {
-		dir.WriteString("\n*No wiki pages yet. Upload documents to get started.*\n")
+	// Defensive: some LLM outputs occasionally bleed into a directory-
+	// like section even when the intro prompt doesn't ask for one. If
+	// the freshly-generated intro starts to look like a legacy payload,
+	// clip it at the first "\n## " just like we did on the read path
+	// above. This keeps indexPage.Content a bounded intro-only blob.
+	if idx := strings.Index(intro, "\n## "); idx >= 0 {
+		intro = strings.TrimSpace(intro[:idx])
 	}
 
-	indexPage.Content = intro + "\n" + dir.String()
-	indexPage.Summary = intro // persist intro for next incremental update
+	indexPage.Content = intro
+	indexPage.Summary = intro
 	_, err = s.wikiService.UpdatePage(ctx, indexPage)
 	return err
 }
@@ -802,34 +941,31 @@ func splitSummaryLine(raw string) (summary string, content string) {
 	return "", raw
 }
 
-// appendLogEntry appends a structured, grep-parseable entry to the log page.
-// Format: ## [2026-04-07 19:50:02] action | title
-// Followed by key-value metadata lines. No sub-headings — keeps `grep "^## \[" log.md` clean.
-func (s *wikiIngestService) appendLogEntry(ctx context.Context, kbID string, action, knowledgeID, docTitle, summary string, pagesAffected []string) {
-	logPage, _ := s.wikiService.GetLog(ctx, kbID)
-	if logPage == nil {
-		return
-	}
-
-	var sb strings.Builder
-	fmt.Fprintf(&sb, "\n## [%s] %s | %s\n",
-		time.Now().Format("2006-01-02 15:04:05"),
-		action,
-		docTitle,
-	)
-	if knowledgeID != "" {
-		fmt.Fprintf(&sb, "- **KnowledgeID**: %s\n", knowledgeID)
-	}
-	if summary != "" {
-		fmt.Fprintf(&sb, "- **Summary**: %s\n", summary)
-	}
+// buildLogEntry builds a WikiLogEntry struct for the current batch. It is
+// pure (no DB access) so callers can accumulate entries cheaply under their
+// lock and flush them in a single AppendBatch call at the end of the batch.
+//
+// Historically this was a per-event `GetLog + UpdatePage` round trip, which
+// rewrote the entire log page's TEXT column on every ingest/retract op —
+// O(n^2) write amplification as the log grew. The batch writer now uses
+// wikiLogEntryService.AppendBatch instead; see ProcessWikiIngest.
+func (s *wikiIngestService) buildLogEntry(tenantID uint64, kbID, action, knowledgeID, docTitle, summary string, pagesAffected []types.WikiLogPageRef) *types.WikiLogEntry {
+	// Copy pagesAffected so the entry does not alias caller-owned slices.
+	// The batch accumulates SlugUpdate results that may be reused downstream.
+	var pages types.WikiLogPageRefs
 	if len(pagesAffected) > 0 {
-		fmt.Fprintf(&sb, "- **Pages affected**: %d (%s)\n", len(pagesAffected), strings.Join(pagesAffected, ", "))
+		pages = make(types.WikiLogPageRefs, len(pagesAffected))
+		copy(pages, pagesAffected)
 	}
-
-	logPage.Content = logPage.Content + sb.String()
-	if _, err := s.wikiService.UpdatePage(ctx, logPage); err != nil {
-		logger.Warnf(ctx, "wiki ingest: failed to update log page: %v", err)
+	return &types.WikiLogEntry{
+		TenantID:        tenantID,
+		KnowledgeBaseID: kbID,
+		Action:          action,
+		KnowledgeID:     knowledgeID,
+		DocTitle:        docTitle,
+		Summary:         summary,
+		PagesAffected:   pages,
+		CreatedAt:       time.Now(),
 	}
 }
 
@@ -985,7 +1121,23 @@ func (s *wikiIngestService) deduplicateExtractedBatch(
 	return entities, concepts
 }
 
-// generateWithTemplate executes a prompt template and calls the LLM
+// generateWithTemplate executes a prompt template and calls the LLM with
+// bounded exponential-backoff retries for transient infrastructure errors.
+//
+// Retry policy:
+//   - Up to wikiLLMMaxAttempts total attempts (initial + retries).
+//   - Only retry errors classified as transient by isTransientLLMError:
+//     HTTP 408/429/5xx, context deadline exceeded (when the parent ctx is
+//     still alive), or generic "timeout"/"connection reset" wording.
+//     4xx (except 408/429) is a caller-side fault and fails fast.
+//   - Backoff is exponential base 2s: 2s, 4s, 8s — roughly wikiLLMBackoffBase
+//   - 2^(attempt-1). Honors ctx cancellation so the task can abort.
+//
+// This exists because wiki ingest makes several independent LLM calls per
+// document (extraction, summary, dedup, citations, intro) and a single
+// transient 504 from the upstream gateway used to drop the document's
+// summary page permanently. Retries plus failedOps requeuing (see
+// mapOneDocument) turn those events into at-most-a-few-minute hiccups.
 func (s *wikiIngestService) generateWithTemplate(ctx context.Context, chatModel chat.Chat, promptTpl string, data map[string]string) (string, error) {
 	tmpl, err := template.New("wiki").Parse(promptTpl)
 	if err != nil {
@@ -999,17 +1151,98 @@ func (s *wikiIngestService) generateWithTemplate(ctx context.Context, chatModel 
 
 	prompt := buf.String()
 	thinking := false
-	response, err := chatModel.Chat(ctx, []chat.Message{
-		{Role: "user", Content: prompt},
-	}, &chat.ChatOptions{
-		Temperature: 0.3,
-		Thinking:    &thinking,
-	})
-	if err != nil {
-		return "", fmt.Errorf("LLM call failed: %w", err)
+
+	var lastErr error
+	for attempt := 1; attempt <= wikiLLMMaxAttempts; attempt++ {
+		response, err := chatModel.Chat(ctx, []chat.Message{
+			{Role: "user", Content: prompt},
+		}, &chat.ChatOptions{
+			Temperature: 0.3,
+			Thinking:    &thinking,
+		})
+		if err == nil {
+			return response.Content, nil
+		}
+		lastErr = err
+
+		// Abort immediately on non-retryable errors (4xx except 408/429,
+		// parse/marshal failures, tool-side bugs, etc.). Retrying a
+		// hard "invalid arguments" error just wastes the model's budget.
+		if !isTransientLLMError(ctx, err) {
+			return "", fmt.Errorf("LLM call failed: %w", err)
+		}
+		if attempt == wikiLLMMaxAttempts {
+			break
+		}
+
+		backoff := wikiLLMBackoffBase << (attempt - 1)
+		logger.Warnf(ctx, "wiki ingest: LLM call failed (attempt %d/%d), retrying in %s: %v",
+			attempt, wikiLLMMaxAttempts, backoff, err)
+		select {
+		case <-ctx.Done():
+			return "", fmt.Errorf("LLM call aborted during backoff: %w", ctx.Err())
+		case <-time.After(backoff):
+		}
+	}
+	return "", fmt.Errorf("LLM call failed after %d attempts: %w", wikiLLMMaxAttempts, lastErr)
+}
+
+// isTransientLLMError reports whether an error from the chat provider
+// looks like an infrastructure hiccup worth retrying. Classification is
+// intentionally conservative: the truthful "could not tell, assume
+// permanent" choice keeps retries cheap and avoids masking real bugs.
+//
+// We treat the following as transient:
+//   - HTTP 408 (client request timeout — upstream usually didn't process),
+//     429 (rate-limited — retry after backoff may succeed), 5xx (any
+//     server-side fault, including the 504 "Remote error, timeout with
+//     60" we see from the gateway in front of several LLM providers).
+//   - Wrapped context.DeadlineExceeded when the parent ctx is still alive
+//     (nested per-call timeouts).
+//   - Substring matches on the error text for common transport failures
+//     ("timeout", "connection reset", "EOF") that providers surface
+//     without a structured status code.
+func isTransientLLMError(ctx context.Context, err error) bool {
+	if err == nil {
+		return false
+	}
+	// Never retry after the parent ctx itself expired — the task is
+	// being cancelled and the next attempt would just fail again.
+	if ctx.Err() != nil {
+		return false
 	}
 
-	return response.Content, nil
+	msg := err.Error()
+	// Providers that bubble HTTP status up formatted as
+	// "API request failed with status NNN: ..." — match that first.
+	for _, s := range []string{
+		"status 408", "status 429",
+		"status 500", "status 501", "status 502", "status 503", "status 504",
+		"status 520", "status 521", "status 522", "status 523", "status 524",
+	} {
+		if strings.Contains(msg, s) {
+			return true
+		}
+	}
+
+	lower := strings.ToLower(msg)
+	for _, s := range []string{
+		"timeout",
+		"timed out",
+		"connection reset",
+		"connection refused",
+		"broken pipe",
+		"no such host", // DNS hiccup
+		"i/o timeout",
+		"unexpected eof",
+		"tls handshake",
+		"context deadline exceeded", // nested per-call deadline
+	} {
+		if strings.Contains(lower, s) {
+			return true
+		}
+	}
+	return false
 }
 
 // --- Helpers ---

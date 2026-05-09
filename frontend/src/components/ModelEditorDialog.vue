@@ -13,14 +13,14 @@
         <!-- 模型来源 -->
         <div class="form-item">
           <label class="form-label required">{{ $t('model.editor.sourceLabel') }}</label>
-          <t-radio-group v-model="formData.source">
-            <t-radio
+          <t-radio-group v-model="formData.source" class="source-select">
+            <t-radio-button
               value="local"
               :disabled="ollamaServiceStatus === false || modelType === 'rerank'"
             >
               {{ $t('model.editor.sourceLocal') }}
-            </t-radio>
-            <t-radio value="remote">{{ $t('model.editor.sourceRemote') }}</t-radio>
+            </t-radio-button>
+            <t-radio-button value="remote">{{ $t('model.editor.sourceRemote') }}</t-radio-button>
           </t-radio-group>
 
           <!-- ReRank模型不支持Ollama的提示信息 -->
@@ -36,10 +36,10 @@
             <t-button
               variant="text"
               size="small"
-              theme="primary"
               @click="goToOllamaSettings"
               class="tip-link"
             >
+              <template #icon><t-icon name="jump" /></template>
               {{ $t('model.editor.goToOllamaSettings') }}
             </t-button>
           </div>
@@ -146,8 +146,11 @@
                   href="https://developers.weixin.qq.com/doc/aispeech/knowledge/atomic_capability/atomic_interface.html"
                   target="_blank"
                   rel="noopener noreferrer"
-                  class="weknoracloud-hint-link"
-                >{{ $t('settings.weknoraCloud.modelHintDocsLink') }}</a>
+                  class="doc-link"
+                >
+                  {{ $t('settings.weknoraCloud.modelHintDocsLink') }}
+                  <t-icon name="link" class="link-icon" />
+                </a>
               </div>
             </div>
 
@@ -165,10 +168,10 @@
                   <t-button
                     variant="text"
                     size="small"
-                    theme="primary"
                     @click="goToWeKnoraCloudSettings"
                     style="padding: 0; height: auto;"
                   >
+                    <template #icon><t-icon name="jump" /></template>
                     {{ $t('settings.weknoraCloud.goToSettings') }}
                   </t-button>
                 </div>
@@ -295,7 +298,7 @@
             <!-- Ollama 本地模型：自动检测维度按钮 -->
             <t-button 
               v-if="formData.source === 'local' && formData.modelName"
-              variant="outline"
+              variant="text"
               size="small"
               :loading="checking"
               @click="checkOllamaDimension"
@@ -1272,7 +1275,7 @@ const handleCancel = () => {
 
 // 表单项样式
 .form-item {
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 
   &:last-child {
     margin-bottom: 0;
@@ -1281,8 +1284,8 @@ const handleCancel = () => {
 
 .form-label {
   display: block;
-  margin-bottom: 8px;
-  font-size: 14px;
+  margin-bottom: 6px;
+  font-size: 13px;
   font-weight: 500;
   color: var(--td-text-color-primary);
 
@@ -1290,7 +1293,18 @@ const handleCancel = () => {
     content: '*';
     color: var(--td-error-color);
     margin-left: 4px;
-    font-weight: 600;
+    font-weight: 500;
+  }
+}
+
+// 模型来源分段：两个选项等分宽度
+.source-select {
+  display: flex;
+  width: 100%;
+
+  :deep(.t-radio-button) {
+    flex: 1;
+    text-align: center;
   }
 }
 
@@ -1306,34 +1320,6 @@ const handleCancel = () => {
 
 // 厂商选择器样式 — 移至非 scoped 块，因为 t-select popup 渲染到 body 下
 // .provider-option 样式见文件末尾
-
-// 单选按钮组
-:deep(.t-radio-group) {
-  display: flex;
-  gap: 24px;
-
-  .t-radio {
-    margin-right: 0;
-    font-size: 13px;
-
-    &:hover {
-      .t-radio__label {
-        color: var(--td-brand-color);
-      }
-    }
-  }
-
-  .t-radio__label {
-    font-size: 13px;
-    color: var(--td-text-color-primary);
-    transition: color 0.15s ease;
-  }
-
-  .t-radio__input:checked + .t-radio__label {
-    color: var(--td-brand-color);
-    font-weight: 500;
-  }
-}
 
 // 复选框
 :deep(.t-checkbox) {
@@ -1410,14 +1396,6 @@ const handleCancel = () => {
     border-left: 3px solid #f97316;
   }
 
-  .weknoracloud-hint-link {
-    color: var(--td-brand-color);
-    text-decoration: none;
-
-    &:hover {
-      text-decoration: underline;
-    }
-  }
 }
 
 // Ollama 模型选择器样式
@@ -1516,25 +1494,10 @@ const handleCancel = () => {
   .t-select {
     flex: 1;
   }
-
-  :deep(.t-button) {
-    height: 32px;
-    font-size: 13px;
-    border-radius: 6px;
-    flex-shrink: 0;
-  }
 }
 
 .refresh-btn {
-  margin-top: 0;
-  font-size: 13px;
-  color: var(--td-text-color-secondary);
   flex-shrink: 0;
-
-  &:hover {
-    color: var(--td-brand-color);
-    background: rgba(7, 192, 95, 0.04);
-  }
 }
 
 @keyframes spin {
@@ -1555,7 +1518,6 @@ const handleCancel = () => {
 
 .dimension-check-btn {
   flex-shrink: 0;
-  font-size: 12px;
 }
 
 .dimension-hint {

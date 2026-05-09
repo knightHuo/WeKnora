@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -245,61 +247,381 @@ func (s *wikiPageService) GetIndex(ctx context.Context, kbID string) (*types.Wik
 	return page, nil
 }
 
-// GetLog returns the log page for a knowledge base
+// wikiIndexContentPageTypes enumerates the page types that make up a wiki's
+// user-visible directory. System pages (index/log) are excluded; any
+// LLM-created type we do not recognize surfaces under a generic "other"
+// bucket.
+var wikiIndexContentPageTypes = []string{
+	types.WikiPageTypeSummary,
+	types.WikiPageTypeEntity,
+	types.WikiPageTypeConcept,
+	types.WikiPageTypeSynthesis,
+	types.WikiPageTypeComparison,
+}
+
+// GetIndexView builds the structured index response without ever
+// materializing a multi-MB directory markdown string. Intro is read from
+// the index wiki_page row (which now carries only intro text — see
+// rebuildIndexPage). Each requested page_type is paginated independently
+// with ListByTypeLight so reads stay O(page_size) rather than O(total
+// pages in the KB).
+//
+// `pageTypes` narrows which groups to include; empty = all content types.
+// `limit` is the per-group window size (defaults to 50, capped at 200).
+// `cursor` is an opaque offset string; currently we use the stringified
+// offset so clients can resume where they left off. Because different
+// page_types paginate independently, `cursor` applies uniformly to every
+// group — if the caller wants per-group cursors it should request one
+// type at a time via `pageTypes`. That simplifies the wire format and
+// matches the frontend's tabbed UX.
+func (s *wikiPageService) GetIndexView(
+	ctx context.Context,
+	kbID string,
+	pageTypes []string,
+	limit int,
+	cursor string,
+) (*types.WikiIndexResponse, error) {
+	indexPage, err := s.GetIndex(ctx, kbID)
+	if err != nil {
+		return nil, fmt.Errorf("load index page: %w", err)
+	}
+
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 200 {
+		limit = 200
+	}
+	offset := 0
+	if cursor != "" {
+		v, parseErr := strconv.Atoi(cursor)
+		if parseErr != nil || v < 0 {
+			return nil, fmt.Errorf("invalid cursor %q", cursor)
+		}
+		offset = v
+	}
+
+	// Default to every known content type when the caller passes no
+	// filter. Any unknown request-time type is passed through verbatim so
+	// future page types (declared in types/wiki_page.go) start showing
+	// up in the index the moment the LLM starts creating them, without a
+	// handler change.
+	selected := pageTypes
+	if len(selected) == 0 {
+		selected = append([]string{}, wikiIndexContentPageTypes...)
+	}
+
+	groups := make([]types.WikiIndexGroup, 0, len(selected))
+	for _, pt := range selected {
+		entries, total, listErr := s.repo.ListByTypeLight(ctx, kbID, pt, limit, offset)
+		if listErr != nil {
+			return nil, fmt.Errorf("list %s pages: %w", pt, listErr)
+		}
+		if entries == nil {
+			entries = []types.WikiIndexEntry{}
+		}
+		next := ""
+		// Only emit a cursor when a full page was returned AND more rows
+		// remain past `offset + limit`. A short page or one that exactly
+		// consumed the remainder should signal end-of-feed.
+		if len(entries) == limit && int64(offset+len(entries)) < total {
+			next = strconv.Itoa(offset + limit)
+		}
+		groups = append(groups, types.WikiIndexGroup{
+			Type:       pt,
+			Total:      total,
+			Items:      entries,
+			NextCursor: next,
+		})
+	}
+
+	// The intro used to be stored on indexPage.Summary while
+	// indexPage.Content held intro + directory markdown. After the
+	// directory was lifted out of wiki_pages the content column holds
+	// only the intro. Fall back to Summary for KBs that haven't been
+	// re-ingested since the change so the response is never blank.
+	intro := indexPage.Content
+	if strings.TrimSpace(intro) == "" {
+		intro = indexPage.Summary
+	}
+
+	return &types.WikiIndexResponse{
+		Intro:   intro,
+		Version: indexPage.Version,
+		Groups:  groups,
+	}, nil
+}
+
+// GetLog returns the wiki_pages row for slug='log' if it exists.
+//
+// Log events are now stored in the dedicated `wiki_log_entries` table and
+// paginated via wikiLogEntryService — the per-KB log is no longer a single
+// TEXT column on a wiki_pages row (that model caused O(n^2) write
+// amplification as logs grew). This method is retained for callers that
+// still probe the legacy row (wiki_lint, knowledge delete, etc.), but it
+// no longer auto-creates the placeholder page on miss; a missing row is a
+// normal state and the helper returns `nil, nil`.
 func (s *wikiPageService) GetLog(ctx context.Context, kbID string) (*types.WikiPage, error) {
 	page, err := s.repo.GetBySlug(ctx, kbID, "log")
 	if err != nil {
 		if errors.Is(err, repository.ErrWikiPageNotFound) {
-			return s.createDefaultPage(ctx, kbID, "log", "Log", types.WikiPageTypeLog,
-				"# Wiki Operation Log\n\nChronological record of wiki operations.\n")
+			return nil, nil
 		}
 		return nil, err
 	}
 	return page, nil
 }
 
-// GetGraph returns the link graph data for visualization
-func (s *wikiPageService) GetGraph(ctx context.Context, kbID string) (*types.WikiGraphData, error) {
-	pages, err := s.repo.ListAll(ctx, kbID)
+// GetGraph returns a slice of the wiki link graph for visualization.
+//
+// Two modes are supported:
+//
+//   - WikiGraphModeOverview (default): returns the top `Limit` pages sorted
+//     by link_count (in+out), plus every edge that connects two surviving
+//     nodes. This is what the frontend fetches on the first graph open —
+//     4万-page wikis would otherwise ship ~30MB of JSON and crash the
+//     browser trying to render 100k SVG elements.
+//
+//   - WikiGraphModeEgo: returns the BFS neighborhood of `Center` up to
+//     `Depth` undirected hops, capped at `Limit` total nodes. The
+//     frontend uses this to drill down when the user clicks / searches a
+//     node in the overview.
+//
+// `Types` is an optional page_type allow-list applied to both the candidate
+// node set and (in ego mode) the frontier expansion. Leaving it empty means
+// no type filter.
+//
+// `Limit <= 0` disables the cap entirely and is reserved for internal
+// callers like the lint service that need to walk every page. The HTTP
+// handler always clamps Limit into a safe range so external traffic can
+// never opt out of truncation.
+//
+// Implementation note: pages are still fetched via repo.ListAll. At 4万
+// pages that's ~10MB of rows + deserialization, which is already on the
+// expensive side but still tractable and keeps the repository interface
+// unchanged. Pushing the filter/top-N down into SQL is a follow-up step
+// (cache layer + DB-side projection) — see CLAUDE.md plan.
+func (s *wikiPageService) GetGraph(ctx context.Context, req *types.WikiGraphRequest) (*types.WikiGraphData, error) {
+	if req == nil {
+		return nil, errors.New("wiki graph request is required")
+	}
+
+	pages, err := s.repo.ListAll(ctx, req.KnowledgeBaseID)
 	if err != nil {
 		return nil, err
 	}
+	return computeGraphSubset(pages, req)
+}
 
-	nodeMap := make(map[string]*types.WikiGraphNode)
-	var edges []types.WikiGraphEdge
+// computeGraphSubset is the pure I/O-free core of GetGraph. It takes the
+// full page list and a request description and returns the subgraph the
+// caller asked for. Extracted from GetGraph so tests can exercise the
+// mode/limit/type-filter behavior without plumbing a full repository mock.
+func computeGraphSubset(pages []*types.WikiPage, req *types.WikiGraphRequest) (*types.WikiGraphData, error) {
+	mode := req.Mode
+	if mode == "" {
+		mode = types.WikiGraphModeOverview
+	}
 
-	// Build nodes
+	// Pre-compute link_count and the type allow-list used for candidate
+	// filtering. We keep the full page list around so ego mode can still
+	// traverse through neighbors whose type is in the allow-list.
+	typeAllow := make(map[string]bool, len(req.Types))
+	for _, t := range req.Types {
+		if t != "" {
+			typeAllow[t] = true
+		}
+	}
+	hasTypeFilter := len(typeAllow) > 0
+
+	pageBySlug := make(map[string]*types.WikiPage, len(pages))
+	linkCount := make(map[string]int, len(pages))
 	for _, p := range pages {
-		linkCount := len(p.InLinks) + len(p.OutLinks)
-		nodeMap[p.Slug] = &types.WikiGraphNode{
-			Slug:      p.Slug,
-			Title:     p.Title,
-			PageType:  p.PageType,
-			LinkCount: linkCount,
+		pageBySlug[p.Slug] = p
+		linkCount[p.Slug] = len(p.InLinks) + len(p.OutLinks)
+	}
+
+	// Select the node slug set for the requested slice.
+	var selected map[string]struct{}
+	switch mode {
+	case types.WikiGraphModeEgo:
+		if req.Center == "" {
+			return nil, errors.New("ego graph requires a center slug")
+		}
+		if _, ok := pageBySlug[req.Center]; !ok {
+			return nil, fmt.Errorf("ego center slug %q not found", req.Center)
+		}
+		depth := req.Depth
+		if depth < 1 {
+			depth = 1
+		}
+		selected = bfsEgoSlugs(pageBySlug, req.Center, depth, typeAllow, req.Limit)
+	default:
+		// overview: keep only type-allowed candidates, sort by link_count desc, cap.
+		candidates := make([]*types.WikiPage, 0, len(pages))
+		for _, p := range pages {
+			if hasTypeFilter && !typeAllow[p.PageType] {
+				continue
+			}
+			candidates = append(candidates, p)
+		}
+		sort.SliceStable(candidates, func(i, j int) bool {
+			li := linkCount[candidates[i].Slug]
+			lj := linkCount[candidates[j].Slug]
+			if li != lj {
+				return li > lj
+			}
+			// Stable tiebreaker keeps the API deterministic between calls.
+			return candidates[i].Slug < candidates[j].Slug
+		})
+		if req.Limit > 0 && len(candidates) > req.Limit {
+			candidates = candidates[:req.Limit]
+		}
+		selected = make(map[string]struct{}, len(candidates))
+		for _, p := range candidates {
+			selected[p.Slug] = struct{}{}
 		}
 	}
 
-	// Build edges from outbound links
+	// Build nodes from the selected set.
+	nodes := make([]types.WikiGraphNode, 0, len(selected))
+	for slug := range selected {
+		p := pageBySlug[slug]
+		nodes = append(nodes, types.WikiGraphNode{
+			Slug:      p.Slug,
+			Title:     p.Title,
+			PageType:  p.PageType,
+			LinkCount: linkCount[slug],
+		})
+	}
+	// Deterministic node ordering — the map iteration above is random.
+	sort.Slice(nodes, func(i, j int) bool {
+		if nodes[i].LinkCount != nodes[j].LinkCount {
+			return nodes[i].LinkCount > nodes[j].LinkCount
+		}
+		return nodes[i].Slug < nodes[j].Slug
+	})
+
+	// Build edges, keeping only edges whose endpoints both survived selection.
+	var edges []types.WikiGraphEdge
 	for _, p := range pages {
+		if _, ok := selected[p.Slug]; !ok {
+			continue
+		}
 		for _, target := range p.OutLinks {
-			if _, exists := nodeMap[target]; exists {
-				edges = append(edges, types.WikiGraphEdge{
-					Source: p.Slug,
-					Target: target,
-				})
+			if _, ok := selected[target]; !ok {
+				continue
+			}
+			edges = append(edges, types.WikiGraphEdge{
+				Source: p.Slug,
+				Target: target,
+			})
+		}
+	}
+
+	// total is the count of candidate nodes before truncation — i.e. the
+	// population the frontend would need to fetch if it asked for the
+	// whole graph. For overview this respects the type filter; for ego
+	// it is the total KB page count (the user still sees "X of Y" based
+	// on the full wiki, not a filtered denominator).
+	total := len(pages)
+	if mode == types.WikiGraphModeOverview && hasTypeFilter {
+		total = 0
+		for _, p := range pages {
+			if typeAllow[p.PageType] {
+				total++
 			}
 		}
 	}
 
-	nodes := make([]types.WikiGraphNode, 0, len(nodeMap))
-	for _, n := range nodeMap {
-		nodes = append(nodes, *n)
+	meta := types.WikiGraphMeta{
+		Mode:      mode,
+		Total:     total,
+		Returned:  len(nodes),
+		Truncated: len(nodes) < total,
+	}
+	if mode == types.WikiGraphModeEgo {
+		meta.Center = req.Center
+		meta.Depth = req.Depth
+		if meta.Depth < 1 {
+			meta.Depth = 1
+		}
 	}
 
 	return &types.WikiGraphData{
 		Nodes: nodes,
 		Edges: edges,
+		Meta:  meta,
 	}, nil
+}
+
+// bfsEgoSlugs computes the undirected BFS neighborhood of `center` up to
+// `depth` hops using both inbound and outbound links. Type-filtered pages
+// are excluded from the result but are also NOT traversed through — so a
+// filter that hides "index" pages will not leak the whole wiki via the
+// index. The caller guarantees center exists in pageBySlug.
+func bfsEgoSlugs(
+	pageBySlug map[string]*types.WikiPage,
+	center string,
+	depth int,
+	typeAllow map[string]bool,
+	limit int,
+) map[string]struct{} {
+	hasTypeFilter := len(typeAllow) > 0
+	centerPage, ok := pageBySlug[center]
+	if !ok {
+		return map[string]struct{}{}
+	}
+	// If the center itself fails the type filter we honor the filter and
+	// return an empty set — the handler will surface Returned=0.
+	if hasTypeFilter && !typeAllow[centerPage.PageType] {
+		return map[string]struct{}{}
+	}
+
+	visited := map[string]struct{}{center: {}}
+	frontier := []string{center}
+
+	for hop := 0; hop < depth; hop++ {
+		if limit > 0 && len(visited) >= limit {
+			break
+		}
+		next := make([]string, 0, len(frontier))
+		for _, slug := range frontier {
+			p, ok := pageBySlug[slug]
+			if !ok {
+				continue
+			}
+			neighbors := make([]string, 0, len(p.OutLinks)+len(p.InLinks))
+			neighbors = append(neighbors, p.OutLinks...)
+			neighbors = append(neighbors, p.InLinks...)
+			for _, nb := range neighbors {
+				if _, seen := visited[nb]; seen {
+					continue
+				}
+				np, exists := pageBySlug[nb]
+				if !exists {
+					continue
+				}
+				if hasTypeFilter && !typeAllow[np.PageType] {
+					continue
+				}
+				visited[nb] = struct{}{}
+				next = append(next, nb)
+				if limit > 0 && len(visited) >= limit {
+					break
+				}
+			}
+			if limit > 0 && len(visited) >= limit {
+				break
+			}
+		}
+		frontier = next
+		if len(frontier) == 0 {
+			break
+		}
+	}
+
+	return visited
 }
 
 // GetStats returns aggregate statistics about the wiki
@@ -408,6 +730,13 @@ func (s *wikiPageService) RebuildLinks(ctx context.Context, kbID string) error {
 // ListAllPages retrieves all wiki pages without pagination.
 func (s *wikiPageService) ListAllPages(ctx context.Context, kbID string) ([]*types.WikiPage, error) {
 	return s.repo.ListAll(ctx, kbID)
+}
+
+// ListByType returns every wiki page of a given type for a KB. Exposed so
+// callers like intro regeneration can load only the page type they need
+// (summaries) instead of paying for the full ListAll scan.
+func (s *wikiPageService) ListByType(ctx context.Context, kbID string, pageType string) ([]*types.WikiPage, error) {
+	return s.repo.ListByType(ctx, kbID, pageType)
 }
 
 // ListPagesBySourceRef exposes the repository's source-ref lookup so higher
@@ -612,79 +941,23 @@ func (s *wikiPageService) InjectCrossLinks(ctx context.Context, kbID string, aff
 	}
 }
 
-// RebuildIndexPage regenerates the index page directory.
+// RebuildIndexPage was historically called by agent write/rename tools to
+// refresh the index page's directory listing after a page mutation.
+//
+// The directory is no longer persisted in wiki_pages.content — it is
+// assembled on demand by GetIndexView from the lightweight ListByTypeLight
+// projection, so individual page writes don't need to redo O(N) string
+// concatenation and rewrite a multi-MB TEXT column anymore. Keeping the
+// method name lets existing agent tool call sites (wiki_write_page,
+// wiki_rename_page) compile unchanged; the body is now intentionally a
+// no-op.
+//
+// The intro that still lives on the index row is managed separately by
+// the ingest pipeline (see wikiIngestService.rebuildIndexPage) on batch
+// completion, which is where we actually have the LLM + change description
+// context needed to rewrite it.
 func (s *wikiPageService) RebuildIndexPage(ctx context.Context, kbID string) error {
-	indexPage, err := s.GetIndex(ctx, kbID)
-	if err != nil {
-		return err
-	}
-
-	allPages, err := s.ListAllPages(ctx, kbID)
-	if err != nil {
-		return err
-	}
-
-	typeOrder := []string{
-		types.WikiPageTypeSummary, types.WikiPageTypeEntity, types.WikiPageTypeConcept,
-		types.WikiPageTypeSynthesis, types.WikiPageTypeComparison,
-	}
-	typeLabels := map[string]string{
-		types.WikiPageTypeSummary: "Summary", types.WikiPageTypeEntity: "Entity",
-		types.WikiPageTypeConcept: "Concept", types.WikiPageTypeSynthesis: "Synthesis",
-		types.WikiPageTypeComparison: "Comparison",
-	}
-
-	grouped := make(map[string][]*types.WikiPage)
-	totalPages := 0
-	for _, p := range allPages {
-		if p.PageType == types.WikiPageTypeIndex || p.PageType == types.WikiPageTypeLog {
-			continue
-		}
-		if p.Status == types.WikiPageStatusArchived {
-			continue
-		}
-		grouped[p.PageType] = append(grouped[p.PageType], p)
-		totalPages++
-	}
-
-	var dir strings.Builder
-	for _, pt := range typeOrder {
-		pages := grouped[pt]
-		if len(pages) == 0 {
-			continue
-		}
-		fmt.Fprintf(&dir, "\n## %s (%d)\n\n", typeLabels[pt], len(pages))
-		for _, p := range pages {
-			fmt.Fprintf(&dir, "[[%s]] — %s\n", p.Slug, p.Summary)
-		}
-	}
-	for pt, pages := range grouped {
-		inOrder := false
-		for _, o := range typeOrder {
-			if o == pt {
-				inOrder = true
-				break
-			}
-		}
-		if inOrder || len(pages) == 0 {
-			continue
-		}
-		fmt.Fprintf(&dir, "\n## %s (%d)\n\n", pt, len(pages))
-		for _, p := range pages {
-			fmt.Fprintf(&dir, "[[%s]] — %s\n", p.Slug, p.Summary)
-		}
-	}
-	if totalPages == 0 {
-		dir.WriteString("\n*No wiki pages yet. Upload documents to get started.*\n")
-	}
-
-	intro := indexPage.Summary
-	if intro == "" {
-		intro = "# Wiki Index\n\nThis wiki contains knowledge extracted from uploaded documents.\n"
-		indexPage.Summary = intro
-	}
-
-	indexPage.Content = intro + "\n" + dir.String()
-	_, err = s.UpdatePage(ctx, indexPage)
-	return err
+	_ = ctx
+	_ = kbID
+	return nil
 }
