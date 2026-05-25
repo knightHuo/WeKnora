@@ -363,10 +363,12 @@ func (e *elasticsearchRepository) createIndexIfNotExists(ctx context.Context) er
 	if e.numberOfShards > 0 || e.numberOfReplicas >= 0 {
 		settings := &types.IndexSettings{}
 		if e.numberOfShards > 0 {
-			settings.NumberOfShards = fmt.Sprintf("%d", e.numberOfShards)
+			shards := fmt.Sprintf("%d", e.numberOfShards)
+			settings.NumberOfShards = &shards
 		}
 		if e.numberOfReplicas >= 0 {
-			settings.NumberOfReplicas = fmt.Sprintf("%d", e.numberOfReplicas)
+			replicas := fmt.Sprintf("%d", e.numberOfReplicas)
+			settings.NumberOfReplicas = &replicas
 		}
 		createReq = createReq.Settings(settings)
 	}
@@ -431,12 +433,17 @@ func (e *elasticsearchRepository) VectorRetrieve(ctx context.Context,
 		},
 		MinScore: &minScore,
 	}
+	// Exclude embedding field from source to reduce response size
+	sourceFilter := &types.SourceFilter{
+		Excludes: []string{"embedding"},
+	}
 
 	log.Debugf("[Elasticsearch] Executing vector search in index: %s", e.index)
 	// Execute search with minimum score threshold
 	response, err := e.client.Search().Index(e.index).Request(&search.Request{
-		Query: &types.Query{ScriptScore: scriptScore},
-		Size:  &params.TopK,
+		Query:   &types.Query{ScriptScore: scriptScore},
+		Size:    &params.TopK,
+		Source_: sourceFilter,
 	}).Do(ctx)
 	if err != nil {
 		log.Errorf("[Elasticsearch] Vector search failed: %v", err)
@@ -486,11 +493,16 @@ func (e *elasticsearchRepository) KeywordsRetrieve(ctx context.Context,
 	must := []types.Query{
 		{Match: map[string]types.MatchQuery{"content": {Query: params.Query}}},
 	}
+	// Exclude embedding field from source to reduce response size
+	sourceFilter := &types.SourceFilter{
+		Excludes: []string{"embedding"},
+	}
 
 	log.Debugf("[Elasticsearch] Executing keyword search in index: %s", e.index)
 	response, err := e.client.Search().Index(e.index).Request(&search.Request{
-		Query: &types.Query{Bool: &types.BoolQuery{Filter: filter, Must: must}},
-		Size:  &params.TopK,
+		Query:   &types.Query{Bool: &types.BoolQuery{Filter: filter, Must: must}},
+		Size:    &params.TopK,
+		Source_: sourceFilter,
 	}).Do(ctx)
 	if err != nil {
 		log.Errorf("[Elasticsearch] Keywords search failed: %v", err)

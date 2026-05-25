@@ -1,10 +1,14 @@
 package handler
 
 import (
-	"fmt"
+	"encoding/json"
+	stderrors "errors"
 	"net/http"
+	"strings"
 
+	"github.com/Tencent/WeKnora/internal/agent/approval"
 	"github.com/Tencent/WeKnora/internal/errors"
+	"github.com/Tencent/WeKnora/internal/handler/dto"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
@@ -14,13 +18,21 @@ import (
 
 // MCPServiceHandler handles MCP service related HTTP requests
 type MCPServiceHandler struct {
-	mcpServiceService interfaces.MCPServiceService
+	mcpServiceService      interfaces.MCPServiceService
+	mcpToolApprovalService interfaces.MCPToolApprovalService
+	toolApprovalGate       *approval.Gate
 }
 
 // NewMCPServiceHandler creates a new MCP service handler
-func NewMCPServiceHandler(mcpServiceService interfaces.MCPServiceService) *MCPServiceHandler {
+func NewMCPServiceHandler(
+	mcpServiceService interfaces.MCPServiceService,
+	mcpToolApprovalService interfaces.MCPToolApprovalService,
+	toolApprovalGate *approval.Gate,
+) *MCPServiceHandler {
 	return &MCPServiceHandler{
-		mcpServiceService: mcpServiceService,
+		mcpServiceService:      mcpServiceService,
+		mcpToolApprovalService: mcpToolApprovalService,
+		toolApprovalGate:       toolApprovalGate,
 	}
 }
 
@@ -58,7 +70,7 @@ func (h *MCPServiceHandler) CreateMCPService(c *gin.Context) {
 	if service.URL != nil && *service.URL != "" {
 		if err := secutils.ValidateURLForSSRF(*service.URL); err != nil {
 			logger.Warnf(ctx, "SSRF validation failed for MCP service URL: %v", err)
-			c.Error(errors.NewBadRequestError(fmt.Sprintf("MCP service URL 未通过安全校验: %v", err)))
+			c.Error(errors.NewBadRequestError(secutils.FormatSSRFError("MCP service URL", *service.URL, err)))
 			return
 		}
 	}
@@ -69,9 +81,11 @@ func (h *MCPServiceHandler) CreateMCPService(c *gin.Context) {
 		return
 	}
 
+	// Response uses dto.MCPServiceResponse which omits secret fields by
+	// construction — no runtime redaction needed.
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"data":    service,
+		"data":    dto.NewMCPServiceResponse(&service),
 	})
 }
 
@@ -105,7 +119,7 @@ func (h *MCPServiceHandler) ListMCPServices(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"data":    services,
+		"data":    dto.NewMCPServiceResponses(services),
 	})
 }
 
@@ -139,15 +153,12 @@ func (h *MCPServiceHandler) GetMCPService(c *gin.Context) {
 		return
 	}
 
-	// Hide sensitive information for builtin MCP services
-	responseService := service
-	if service.IsBuiltin {
-		responseService = service.HideSensitiveInfo()
-	}
-
+	// dto.NewMCPServiceResponse omits secret fields and additionally strips
+	// transport details (URL/Headers/EnvVars/StdioConfig) for builtin services
+	// so the cross-tenant builtin list does not leak per-tenant config.
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"data":    responseService,
+		"data":    dto.NewMCPServiceResponse(service),
 	})
 }
 
@@ -222,7 +233,7 @@ func (h *MCPServiceHandler) UpdateMCPService(c *gin.Context) {
 	if service.URL != nil && *service.URL != "" {
 		if err := secutils.ValidateURLForSSRF(*service.URL); err != nil {
 			logger.Warnf(ctx, "SSRF validation failed for MCP service URL: %v", err)
-			c.Error(errors.NewBadRequestError(fmt.Sprintf("MCP service URL 未通过安全校验: %v", err)))
+			c.Error(errors.NewBadRequestError(secutils.FormatSSRFError("MCP service URL", *service.URL, err)))
 			return
 		}
 	}
@@ -260,11 +271,32 @@ func (h *MCPServiceHandler) UpdateMCPService(c *gin.Context) {
 	}
 	if authConfig, ok := updateData["auth_config"].(map[string]interface{}); ok {
 		service.AuthConfig = &types.MCPAuthConfig{}
-		if apiKey, ok := authConfig["api_key"].(string); ok {
-			service.AuthConfig.APIKey = apiKey
+		// Secret fields (api_key, token) are intentionally NOT read from the
+		// main PUT body — they live behind the /credentials subresource so
+		// editing unrelated config (timeout, enabled, etc.) cannot
+		// accidentally clobber a stored credential. Log a warning when a
+		// client still tries to send them so we can spot stale callers.
+		if _, present := authConfig["api_key"]; present {
+			logger.Warnf(ctx,
+				"deprecated: api_key in PUT /mcp-services/%s body is ignored; use PUT /credentials instead",
+				secutils.SanitizeForLog(serviceID))
 		}
-		if token, ok := authConfig["token"].(string); ok {
-			service.AuthConfig.Token = token
+		if _, present := authConfig["token"]; present {
+			logger.Warnf(ctx,
+				"deprecated: token in PUT /mcp-services/%s body is ignored; use PUT /credentials instead",
+				secutils.SanitizeForLog(serviceID))
+		}
+		// CustomHeaders is structural (not a secret) — keep accepting it here.
+		// nil preserves existing, non-nil replaces; the service layer treats a
+		// nil CustomHeaders as "no change".
+		if customHeaders, ok := authConfig["custom_headers"].(map[string]interface{}); ok {
+			headers := make(map[string]string, len(customHeaders))
+			for k, v := range customHeaders {
+				if s, ok := v.(string); ok {
+					headers[k] = s
+				}
+			}
+			service.AuthConfig.CustomHeaders = headers
 		}
 	}
 	if advancedConfig, ok := updateData["advanced_config"].(map[string]interface{}); ok {
@@ -287,9 +319,17 @@ func (h *MCPServiceHandler) UpdateMCPService(c *gin.Context) {
 	}
 
 	logger.Infof(ctx, "MCP service updated successfully: %s", secutils.SanitizeForLog(serviceID))
+
+	// Re-fetch to pick up server-side merges (CustomHeaders preserve, etc.)
+	// and respond with the full current state via the secret-free DTO.
+	stored, err := h.mcpServiceService.GetMCPServiceByID(ctx, tenantID, serviceID)
+	if err != nil {
+		c.Error(errors.NewInternalServerError("Failed to fetch updated MCP service: " + err.Error()))
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"data":    service,
+		"data":    dto.NewMCPServiceResponse(stored),
 	})
 }
 
@@ -444,4 +484,169 @@ func (h *MCPServiceHandler) GetMCPServiceResources(c *gin.Context) {
 		"success": true,
 		"data":    resources,
 	})
+}
+
+// ListMCPToolApprovals returns persisted require_approval flags for tools on an MCP service.
+func (h *MCPServiceHandler) ListMCPToolApprovals(c *gin.Context) {
+	ctx := c.Request.Context()
+	serviceID := secutils.SanitizeForLog(c.Param("id"))
+	tenantID := c.GetUint64(types.TenantIDContextKey.String())
+	if tenantID == 0 {
+		c.Error(errors.NewBadRequestError("Tenant ID cannot be empty"))
+		return
+	}
+	if h.mcpToolApprovalService == nil {
+		c.Error(errors.NewInternalServerError("MCP tool approval is not configured"))
+		return
+	}
+	rows, err := h.mcpToolApprovalService.ListByService(ctx, tenantID, serviceID)
+	if err != nil {
+		// Distinguish "service not found" from internal errors so the client
+		// gets an accurate status code instead of an opaque 404.
+		if strings.Contains(err.Error(), "not found") {
+			c.Error(errors.NewNotFoundError(err.Error()))
+			return
+		}
+		logger.ErrorWithFields(ctx, err, map[string]interface{}{"service_id": serviceID})
+		c.Error(errors.NewInternalServerError(err.Error()))
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": rows})
+}
+
+type setMCPToolApprovalBody struct {
+	RequireApproval bool `json:"require_approval"`
+}
+
+// SetMCPToolApproval sets whether a tool requires human approval before the agent may call it.
+//
+// SetMCPToolApproval godoc
+// @Summary      设置 MCP 工具人工审批策略
+// @Description  为指定 MCP 服务下的某个工具设置/更新审批要求
+// @Tags         MCP服务
+// @Accept       json
+// @Produce      json
+// @Param        id         path      string                  true  "MCP 服务 ID"
+// @Param        tool_name  path      string                  true  "工具名"
+// @Param        request    body      map[string]interface{}  true  "{require_approval: bool}"
+// @Success      200        {object}  map[string]interface{}  "更新结果"
+// @Failure      400        {object}  errors.AppError         "请求参数错误"
+// @Failure      404        {object}  errors.AppError         "MCP 服务或工具不存在"
+// @Security     Bearer
+// @Security     ApiKeyAuth
+// @Router       /mcp-services/{id}/tool-approvals/{tool_name} [put]
+func (h *MCPServiceHandler) SetMCPToolApproval(c *gin.Context) {
+	ctx := c.Request.Context()
+	serviceID := secutils.SanitizeForLog(c.Param("id"))
+	// Gin already URL-decodes path params; do not call url.PathUnescape again
+	// or names containing literal "%" become corrupted.
+	toolName := c.Param("tool_name")
+	tenantID := c.GetUint64(types.TenantIDContextKey.String())
+	if tenantID == 0 {
+		c.Error(errors.NewBadRequestError("Tenant ID cannot be empty"))
+		return
+	}
+	if h.mcpToolApprovalService == nil {
+		c.Error(errors.NewInternalServerError("MCP tool approval is not configured"))
+		return
+	}
+	var body setMCPToolApprovalBody
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.Error(errors.NewBadRequestError(err.Error()))
+		return
+	}
+	if err := h.mcpToolApprovalService.SetRequireApproval(ctx, tenantID, serviceID, toolName, body.RequireApproval); err != nil {
+		c.Error(errors.NewInternalServerError(err.Error()))
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+type resolveToolApprovalBody struct {
+	Decision     string          `json:"decision" binding:"required"` // approve | reject
+	ModifiedArgs json.RawMessage `json:"modified_args"`
+	Reason       string          `json:"reason"`
+}
+
+// ResolveToolApproval completes a pending MCP tool approval (agent execution resumes).
+//
+// ResolveToolApproval godoc
+// @Summary      处理 MCP 工具调用待审批请求
+// @Description  用户审批通过或驳回一次工具调用（用于 Agent 阻塞等待审批的场景）
+// @Tags         MCP服务
+// @Accept       json
+// @Produce      json
+// @Param        pending_id  path      string                  true  "待审批记录 ID"
+// @Param        request     body      map[string]interface{}  true  "{decision: \"approve\"|\"reject\", reason?: string, modified_args?: object}"
+// @Success      200         {object}  map[string]interface{}  "审批结果"
+// @Failure      400         {object}  errors.AppError         "请求参数错误"
+// @Failure      404         {object}  errors.AppError         "待审批记录不存在"
+// @Security     Bearer
+// @Security     ApiKeyAuth
+// @Router       /agent/tool-approvals/{pending_id} [post]
+func (h *MCPServiceHandler) ResolveToolApproval(c *gin.Context) {
+	ctx := c.Request.Context()
+	pendingID := c.Param("pending_id")
+	tenantID := c.GetUint64(types.TenantIDContextKey.String())
+	if tenantID == 0 {
+		c.Error(errors.NewBadRequestError("Tenant ID cannot be empty"))
+		return
+	}
+	if h.toolApprovalGate == nil {
+		c.Error(errors.NewInternalServerError("Tool approval gate is not configured"))
+		return
+	}
+	var body resolveToolApprovalBody
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.Error(errors.NewBadRequestError(err.Error()))
+		return
+	}
+	dec := approval.Decision{Reason: body.Reason}
+	switch body.Decision {
+	case "approve":
+		dec.Approved = true
+		// Reject "null" / non-object payloads up front. Without this, "null"
+		// (4 bytes) passes the len>0 check and the downstream tool sees a nil
+		// argument map, silently losing the original args.
+		trimmed := strings.TrimSpace(string(body.ModifiedArgs))
+		if len(trimmed) > 0 && trimmed != "null" {
+			var probe map[string]interface{}
+			if err := json.Unmarshal(body.ModifiedArgs, &probe); err != nil || probe == nil {
+				c.Error(errors.NewBadRequestError("modified_args must be a non-null JSON object"))
+				return
+			}
+			dec.ModifiedArgs = body.ModifiedArgs
+		}
+	case "reject":
+		dec.Approved = false
+	default:
+		c.Error(errors.NewBadRequestError("decision must be approve or reject"))
+		return
+	}
+	userID, _ := c.Get(types.UserIDContextKey.String())
+	userIDStr, _ := userID.(string)
+	// Reject calls without an authenticated user up front. The gate's
+	// per-user authorization is fail-close, but surfacing 401 here gives
+	// a clearer signal that auth middleware did not populate the context.
+	if strings.TrimSpace(userIDStr) == "" {
+		c.Error(errors.NewUnauthorizedError("authenticated user required to resolve tool approval"))
+		return
+	}
+	if err := h.toolApprovalGate.Resolve(tenantID, userIDStr, pendingID, dec); err != nil {
+		switch {
+		case stderrors.Is(err, approval.ErrPendingNotFound):
+			c.Error(errors.NewNotFoundError("pending approval not found or already completed"))
+		case stderrors.Is(err, approval.ErrAlreadyResolved):
+			c.Error(errors.NewBadRequestError("pending approval already resolved (timeout / cancel raced your action)"))
+		case stderrors.Is(err, approval.ErrTenantMismatch):
+			c.Error(errors.NewBadRequestError("tenant mismatch"))
+		case stderrors.Is(err, approval.ErrUserMismatch):
+			c.Error(errors.NewBadRequestError("user mismatch: only the session owner may resolve this approval"))
+		default:
+			logger.ErrorWithFields(ctx, err, map[string]interface{}{"pending_id": pendingID})
+			c.Error(errors.NewInternalServerError(err.Error()))
+		}
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true})
 }

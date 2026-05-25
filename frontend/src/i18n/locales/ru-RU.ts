@@ -55,6 +55,7 @@ export default {
     documentCategoryTitle: 'Категории документов',
     faqCategoryTitle: 'Категории FAQ',
     untagged: 'Без метки',
+    tagClearAction: 'Снять категорию',
     tagSearchTooltip: 'Поиск тегов',
     tagUpdateSuccess: 'Тег успешно обновлен',
     category: 'Категория',
@@ -286,6 +287,23 @@ export default {
     docSearchPlaceholder: 'Поиск документов...',
     fileTypeFilter: 'Тип файла',
     allFileTypes: 'Все типы',
+    parseStatusFilter: 'Статус',
+    allParseStatuses: 'Все статусы',
+    parseStatusPending: 'Ожидание',
+    parseStatusProcessing: 'Обработка',
+    parseStatusCompleted: 'Завершено',
+    parseStatusFailed: 'Ошибка',
+    sourceFilter: 'Источник',
+    allSources: 'Все источники',
+    sourceWeb: 'Веб',
+    sourceApi: 'API',
+    sourceBrowserExtension: 'Расширение браузера',
+    sourceUpload: 'Загрузка',
+    sourceUrl: 'URL импорт',
+    sourceManual: 'Создан вручную',
+    updatedTimeFilter: 'Обновлено',
+    updatedTimeFrom: 'С',
+    updatedTimeTo: 'По',
     noMatch: 'Совпадающих баз знаний не найдено',
     noKnowledge: 'Нет доступных баз знаний',
     loadingFailed: 'Не удалось загрузить базы знаний',
@@ -416,6 +434,7 @@ export default {
       rerankModel: 'ReRank Model',
       rerankModelDesc: 'Used to rerank knowledge base retrieval results for better accuracy',
       rerankModelPlaceholder: 'Select ReRank Model',
+      rerankModelOptionalHint: 'В текущей области нет RAG-базы знаний, поэтому поле необязательное. Если RAG-база будет добавлена позже, будет использоваться модель ReRank по умолчанию для тенанта; всё же рекомендуется настроить её явно.',
       maxIterations: 'Max Iterations',
       allowedTools: 'Allowed Tools',
       multiTurn: 'Multi-turn Conversation',
@@ -437,6 +456,8 @@ export default {
       placeholderCurrentWeek: 'Current weekday (e.g., Monday)',
       enableQueryExpansion: 'Query Expansion',
       enableRewrite: 'Query Rewrite',
+      queryUnderstandModel: 'Модель понимания запроса',
+      queryUnderstandModelPlaceholder: 'Оставьте пустым, чтобы использовать основную модель чата',
       rewritePromptSystem: 'Rewrite System Prompt',
       rewritePromptSystemPlaceholder: 'Leave empty to use default prompt',
       rewritePromptUser: 'Rewrite User Prompt',
@@ -497,11 +518,24 @@ export default {
       mine: 'My Agents',
       sharedToMe: 'Shared to Me'
     },
+    sections: {
+      builtin: 'Встроенные',
+      mine: 'Созданные мной',
+      tenantReadonly: 'Рабочая область · Только просмотр',
+      tenantOthers: 'Рабочая область · Другие участники',
+      sharedByMe: 'Расшарено мной',
+      sharedEditable: 'Доступно мне · Можно редактировать',
+      sharedReadonly: 'Доступно мне · Только просмотр'
+    },
     empty: {
       title: 'No Custom Agents',
       description: 'Click the button in the top right to create your first agent',
       sharedTitle: 'No shared agents yet',
-      sharedDescription: 'You can join a space or ask others to share agents with you'
+      sharedDescription: 'You can join a space or ask others to share agents with you',
+      favoritesTitle: 'No favorites yet',
+      favoritesDescription: 'Star an agent from its card to add it here',
+      recentsTitle: 'Nothing here yet',
+      recentsDescription: 'Agents you recently used will show up here'
     },
     detail: {
       title: 'Agent Details',
@@ -600,6 +634,17 @@ export default {
     systemSettings: 'Настройки системы',
     tenantInfo: 'Информация о арендаторе',
     apiInfo: 'Информация API',
+    navGroups: {
+      workspaceAccount: 'Пространство и аккаунт',
+      modelsRuntime: 'Модели',
+      integrations: 'Расширения',
+      knowledgeInfra: 'Движки',
+      platform: 'Платформа',
+    },
+    roleDenied: {
+      title: 'Недостаточно прав',
+      desc: 'Ваша роль не позволяет открыть этот раздел настроек. Обратитесь к администратору арендатора, чтобы запросить нужную роль.',
+    },
     weknoraCloud: {
       title: 'WeKnora Cloud',
       description: 'Настройте учётные данные APPID и APPSECRET для WeKnora Cloud. Данные используются для модельных сервисов и движка парсинга документов.',
@@ -752,6 +797,13 @@ export default {
       ks3EndpointPlaceholder: 'e.g. ks3-cn-beijing.ksyuncs.com',
       ks3RegionPlaceholder: 'e.g. BEIJING',
       engineKs3: 'Kingsoft Cloud KS3',
+      obsTitle: 'Huawei Cloud OBS',
+      obsDesc: 'Объектное хранилище Huawei Cloud (OBS), подходит для публичного облака.',
+      obsAccessKeyPlaceholder: 'Huawei Cloud Access Key',
+      obsSecretKeyPlaceholder: 'Huawei Cloud Secret Key',
+      obsEndpointPlaceholder: 'e.g. obs.cn-north-4.myhuaweicloud.com',
+      obsRegionPlaceholder: 'e.g. cn-north-4',
+      engineObs: 'Huawei Cloud OBS',
       ossTitle: 'Alibaba Cloud OSS',
       ossDesc: 'Объектное хранилище Alibaba Cloud (OSS), подходит для публичного облака.',
       ossAccessKeyPlaceholder: 'Alibaba Cloud Access Key',
@@ -769,6 +821,7 @@ export default {
       tos: 'Volcengine TOS',
       oss: 'Alibaba Cloud OSS',
       ks3: 'Kingsoft Cloud KS3',
+      obs: 'Huawei Cloud OBS',
     }
   },
   webSearchSettings: {
@@ -807,6 +860,8 @@ export default {
     proxyUrlPlaceholder: 'Напр. http://127.0.0.1:7890 (необязательно)',
     proxyUrlHelp: 'Укажите, если доступ к API поиска нужен через прокси; иначе используются переменные HTTP_PROXY/HTTPS_PROXY.',
     apiKeyLabel: 'API-ключ',
+    baseUrlLabel: 'URL экземпляра',
+    baseUrlPlaceholder: 'https://searxng.example.com',
     apiKeyDescription: 'Введите API-ключ выбранного провайдера поиска',
     apiKeyPlaceholder: 'Введите API-ключ',
     maxResultsLabel: 'Максимум результатов',
@@ -932,7 +987,7 @@ export default {
   },
   graphSettings: {
     title: 'Настройки графа знаний',
-    description: 'Настройте извлечение сущностей и отношений для автоматического построения графа знаний из текста',
+    description: 'Настройте извлечение сущностей и отношений для автоматического построения графа знаний из текста (примечание: это не то же самое, что «граф ссылок страниц» внутри Wiki — там показаны связи между Wiki-страницами, а здесь строится граф сущностей и отношений на основе LLM)',
     enableLabel: 'Включить извлечение сущностей и отношений',
     enableDescription: 'Автоматически извлекать сущности и отношения из текста при включении',
     tagsLabel: 'Типы отношений',
@@ -1193,6 +1248,9 @@ export default {
     rememberMe: 'Запомнить меня',
     forgotPassword: 'Забыли пароль?',
     loginSuccess: 'Вход выполнен успешно!',
+    loginSuccessTitle: 'Вход выполнен',
+    loginSuccessContent: 'С возвращением. Вы вошли в {name}',
+    loginSuccessContentWithRole: 'С возвращением. Вы вошли в {name} · роль {role}',
     loginFailed: 'Ошибка входа',
     loggingIn: 'Вход...',
     register: 'Регистрация',
@@ -1321,7 +1379,17 @@ export default {
   tenant: {
     title: 'Информация об арендаторе',
     currentTenant: 'Текущий арендатор',
-    switchTenant: 'Сменить арендатора',
+    switchTenant: 'Переключить рабочее пространство',
+    switcher: {
+      menuLabel: 'Переключить рабочее пространство',
+      currentBadge: 'Текущий',
+      homeBadge: 'Home',
+      homeTooltip: 'Ваше основное рабочее пространство',
+      empty: 'Вы состоите только в одном рабочем пространстве',
+    },
+    currentChip: {
+      home: 'Основной арендатор',
+    },
     sectionDescription: 'Просмотр детальной конфигурации арендатора',
     apiDocument: 'Документация API',
     name: 'Имя арендатора',
@@ -1370,10 +1438,26 @@ export default {
     searchPlaceholder: 'Поиск по имени или введите ID арендатора...',
     searchHint: 'Поиск по имени или введите ID арендатора напрямую',
     noMatch: 'Не найдено подходящих арендаторов',
-    switchSuccess: 'Арендатор успешно переключен',
+    switchSuccessTitle: 'Пространство переключено',
+    switchSuccessContent: 'Вы вошли в {name}',
+    switchSuccessContentWithRole: 'Вы вошли в {name} · роль {role}',
     loadTenantsFailed: 'Не удалось загрузить список арендаторов',
     loading: 'Загрузка...',
     loadMore: 'Загрузить еще',
+    create: {
+      action: 'Создать новое рабочее пространство',
+      dialogTitle: 'Создать новое рабочее пространство',
+      dialogSubtitle: 'У рабочего пространства собственные базы знаний и участники. Вы станете его владельцем.',
+      nameLabel: 'Название',
+      namePlaceholder: 'Например: Мой новый проект',
+      nameRequired: 'Введите название рабочего пространства',
+      descriptionLabel: 'Описание (необязательно)',
+      descriptionPlaceholder: 'Кратко опишите назначение рабочего пространства',
+      submit: 'Создать',
+      cancel: 'Отмена',
+      success: 'Рабочее пространство создано',
+      failed: 'Не удалось создать рабочее пространство',
+    },
     details: {
       idLabel: 'ID арендатора',
       idDescription: 'Уникальный идентификатор вашего арендатора',
@@ -1386,7 +1470,19 @@ export default {
       statusLabel: 'Статус арендатора',
       statusDescription: 'Текущий рабочий статус арендатора',
       createdAtLabel: 'Время создания арендатора',
-      createdAtDescription: 'Дата и время создания арендатора'
+      createdAtDescription: 'Дата и время создания арендатора',
+      editName: 'Изменить имя',
+      editNamePlaceholder: 'Введите новое имя арендатора',
+      editNameConfirm: 'Сохранить',
+      editNameCancel: 'Отмена',
+      editNameRequired: 'Имя арендатора не может быть пустым',
+      editNameSuccess: 'Имя арендатора обновлено',
+      editNameFailed: 'Не удалось обновить имя арендатора',
+      editDescription: 'Изменить описание',
+      editDescriptionPlaceholder: 'Введите новое описание арендатора',
+      editDescriptionSuccess: 'Описание арендатора обновлено',
+      editDescriptionFailed: 'Не удалось обновить описание арендатора',
+      descriptionEmptyPlaceholder: 'Не указано'
     },
     storage: {
       quotaLabel: 'Квота хранения',
@@ -1395,6 +1491,11 @@ export default {
       usedDescription: 'Объём уже использованного пространства',
       usageLabel: 'Использование хранения',
       usageDescription: 'Процент использованного пространства'
+    },
+    leaveDangerZone: {
+      title: 'Покинуть это рабочее пространство',
+      desc: 'Завершает ваше членство в этом пространстве. Вы потеряете доступ к базам знаний и агентам. Позже вас можно снова пригласить.',
+      button: 'Покинуть пространство',
     },
     messages: {
       fetchFailed: 'Не удалось получить информацию об арендаторе',
@@ -1458,14 +1559,22 @@ export default {
     sectionDescription: 'Просмотр сведений о версии системы и конфигурации учётной записи пользователя',
     loadingInfo: 'Загрузка данных...',
     retry: 'Повторить',
-    versionLabel: 'Версия системы',
-    versionDescription: 'Текущий номер версии системы',
+    versionLabel: 'Версия приложения',
+    versionDescription: 'Версия сервиса приложения (weknora-app)',
+    frontendVersionLabel: 'Версия UI',
+    frontendVersionDescription: 'Версия сборки UI (weknora-ui)',
+    versionMismatch: 'Не совпадает с версией приложения',
     buildTimeLabel: 'Время сборки',
     buildTimeDescription: 'Время, когда система была собрана',
     goVersionLabel: 'Версия Go',
     goVersionDescription: 'Версия языка Go, используемая backend',
     dbVersionLabel: 'Версия базы данных',
     dbVersionDescription: 'Текущая версия миграции базы данных',
+    dbMigrationFailedTag: 'Миграция не удалась',
+    dbMigrationFailedTitle: 'Сбой миграции базы данных',
+    dbMigrationFailedDesc: 'Миграция базы данных при запуске не завершилась успешно. Часть таблиц или индексов могла не создаться, из-за чего Wiki, граф знаний и другие функции могут не работать. Сначала ознакомьтесь с руководством по диагностике ниже; если проблема сохраняется, сообщите о ней по ссылке.',
+    dbMigrationViewDocs: 'Открыть руководство по диагностике',
+    dbMigrationReportIssue: 'Не удаётся починить? Создать issue',
     keywordIndexEngineLabel: 'Движок индексации ключевых слов',
     keywordIndexEngineDescription: 'Используемый в настоящее время движок индексации ключевых слов',
     vectorStoreEngineLabel: 'Движок векторного хранилища',
@@ -1487,7 +1596,10 @@ export default {
       resourcesTitle: 'Доступные ресурсы',
       descriptionLabel: 'Описание',
       schemaLabel: 'Структура параметров',
-      emptyDescription: 'Сервис не предоставил инструменты или ресурсы'
+      emptyDescription: 'Сервис не предоставил инструменты или ресурсы',
+      requireApproval: 'Требуется подтверждение',
+      requireApprovalTip: 'При включении агент ждёт подтверждения перед вызовом инструмента.',
+      approvalSaveFailed: 'Не удалось сохранить настройку'
     }
   },
   error: {
@@ -1513,6 +1625,7 @@ export default {
       registerFailed: 'Ошибка регистрации',
       getUserFailed: 'Не удалось получить информацию о пользователе',
       getTenantFailed: 'Не удалось получить информацию о тенанте',
+      updatePreferencesFailed: 'Не удалось обновить настройки',
       refreshTokenFailed: 'Не удалось обновить токен',
       logoutFailed: 'Ошибка выхода',
       validateTokenFailed: 'Ошибка проверки токена'
@@ -1526,7 +1639,8 @@ export default {
     tenant: {
       listFailed: 'Не удалось получить список тенантов',
       searchFailed: 'Не удалось выполнить поиск тенантов',
-      resetApiKeyFailed: 'Не удалось сбросить API Key'
+      resetApiKeyFailed: 'Не удалось сбросить API Key',
+      updateFailed: 'Не удалось обновить информацию об арендаторе'
     },
     initialization: {
       checkFailed: 'Проверка не пройдена',
@@ -1728,7 +1842,7 @@ export default {
     builtinTag: 'Built-in'
   },
   createChat: {
-    title: 'Вопросы и ответы на основе базы знаний — AI помощник',
+    title: 'Привет, я WeKnora — ваши знания всегда под рукой',
     newSessionTitle: 'Новая сессия',
     messages: {
       selectKnowledgeBase: 'Сначала выберите базу знаний',
@@ -1745,7 +1859,11 @@ export default {
       title: 'Базы знаний отсутствуют',
       description: 'Нажмите «Создать базу знаний» в левом быстром действии, чтобы добавить первую базу.',
       sharedTitle: 'No shared knowledge bases',
-      sharedDescription: 'You can join a shared space or request others to share knowledge bases with you'
+      sharedDescription: 'You can join a shared space or request others to share knowledge bases with you',
+      favoritesTitle: 'No favorites yet',
+      favoritesDescription: 'Star a knowledge base from its card to add it here',
+      recentsTitle: 'Nothing here yet',
+      recentsDescription: 'Knowledge bases you recently opened will show up here'
     },
     delete: {
       confirmTitle: 'Подтверждение удаления',
@@ -1761,7 +1879,12 @@ export default {
     },
     sections: {
       pinned: 'Закреплённые',
-      others: 'Другие'
+      mine: 'Созданные мной',
+      tenantReadonly: 'Рабочая область · Только просмотр',
+      tenantOthers: 'Рабочая область · Другие участники',
+      sharedByMe: 'Расшарено мной',
+      sharedEditable: 'Доступно мне · Можно редактировать',
+      sharedReadonly: 'Доступно мне · Только просмотр'
     },
     messages: {
       deleted: 'База знаний удалена',
@@ -1840,6 +1963,7 @@ export default {
     sidebar: {
       basic: 'Основная информация',
       models: 'Конфигурация моделей',
+      vectorStore: 'Vector Store',
       chunking: 'Настройки разбиения',
       advanced: 'Дополнительные настройки',
       faq: 'FAQ настройки',
@@ -1851,6 +1975,12 @@ export default {
       datasource: 'Источники данных',
       share: 'Sharing',
       indexing: 'Стратегия индексации',
+    },
+    errors: {
+      vectorStoreBindingInvalid:
+        'The selected vector store cannot be used. Choose a different store or use the system default.',
+      vectorStoreUnavailable:
+        'The selected vector store is currently unavailable. Check its connection configuration in Settings → Vector Stores.',
     },
     basic: {
       title: 'Основная информация',
@@ -1905,6 +2035,7 @@ export default {
       tabDocuments: 'Документы',
       tabWiki: 'Wiki',
       tabGraph: 'Граф',
+      tabGraphTip: 'Граф связей между Wiki-страницами (граф ссылок страниц). Это НЕ то же самое, что граф знаний на основе сущностей и отношений, настраиваемый в «Настройки БЗ → Граф знаний».',
       searchPlaceholder: 'Поиск Wiki-страниц...',
       searchNoResults: 'Страницы не найдены',
       loadMore: 'Загрузить ещё (осталось {remaining})',
@@ -1936,7 +2067,7 @@ export default {
       logLoadMore: 'Загрузить ещё',
       indexOverviewTag: 'Каталог',
       indexEmpty: 'Пока нет wiki-страниц. Сначала загрузите документы.',
-      graphNoData: 'Нет данных графа. Сначала загрузите документы.',
+      graphNoData: 'Нет данных графа. Сначала загрузите документы. (Здесь показаны связи между Wiki-страницами, что отличается от графа сущностей и отношений в «Настройки БЗ → Граф знаний».)',
       showArrows: 'Показать стрелки',
       hideArrows: 'Скрыть стрелки',
       expandNeighbors: 'Развернуть соседей',
@@ -3251,7 +3382,30 @@ export default {
     think: 'Глубокое размышление',
     todoWrite: 'Составить план'
   },
+  vectorStoreBadge: {
+    systemDefault: 'System default',
+    sharedFromOrg: 'Shared from another organization',
+    unknownStore: 'Unknown store',
+    unavailable: 'Unavailable',
+  },
   kbSettings: {
+    vectorStore: {
+      title: 'Vector Store',
+      description:
+        'Choose which vector store this knowledge base writes to. The binding is permanent — to move an existing KB to a different store, create a new KB and re-index.',
+      loading: 'Loading vector stores...',
+      engineLabel: 'Vector store',
+      engineDesc:
+        'Pick a store from the global Vector Stores configuration, or leave as System default to use the tenant-wide RETRIEVE_DRIVER engine.',
+      boundLabel: 'Bound vector store',
+      systemDefault: 'System default',
+      immutableHint:
+        'Cannot be changed after creation. To migrate later, create a new KB bound to the desired store and re-index.',
+      immutableEdit: 'Vector store binding cannot be changed after creation.',
+      unavailableHint:
+        'The bound vector store is currently unavailable; check its connection configuration in Settings → Vector Stores.',
+      goGlobalSettings: 'Go to Vector Store Settings',
+    },
     storage: {
       title: 'Хранилище',
       description: 'Выберите хранилище файлов. Это влияет на способ хранения загруженных документов и изображений в документах. Параметры настраиваются в глобальных настройках.',
@@ -3277,6 +3431,8 @@ export default {
       engineOssDesc: 'Объектное хранилище Alibaba Cloud, для публичного облака',
       engineKs3: 'Kingsoft Cloud KS3',
       engineKs3Desc: 'Объектное хранилище Kingsoft Cloud, для публичного облака',
+      engineObs: 'Huawei Cloud OBS',
+      engineObsDesc: 'Объектное хранилище Huawei Cloud, для публичного облака',
     },
     parser: {
       title: 'Парсер',
@@ -3323,6 +3479,22 @@ export default {
     supportedFormats: 'Поддерживаемые форматы'
   },
   agentStream: {
+    toolApproval: {
+      banner: 'Этот инструмент MCP требует подтверждения. Проверьте параметры.',
+      service: 'Сервис',
+      tool: 'Инструмент',
+      argsLabel: 'Аргументы',
+      argsModified: 'Изменено',
+      countdown: 'Осталось около {seconds} с',
+      approve: 'Подтвердить и выполнить',
+      reject: 'Отклонить',
+      approvedTag: 'Подтверждено',
+      rejectedTag: 'Отклонено',
+      invalidJson: 'Некорректный JSON',
+      submitted: 'Отправлено',
+      submitFailed: 'Ошибка отправки',
+      userRejected: 'Отклонено пользователем',
+    },
     tools: {
       searchKnowledge: 'Поиск по базе знаний',
       grepChunks: 'Поиск по текстовому шаблону',
@@ -3385,6 +3557,8 @@ export default {
       searchKbFailed: 'Ошибка поиска по базе знаний',
       webSearch: 'Веб-поиск',
       webSearchFailed: 'Ошибка веб-поиска',
+      grepSearch: 'Поиск по ключевым словам',
+      grepSearchFailed: 'Ошибка поиска по ключевым словам',
       getDocInfo: 'Получение информации о документе',
       getDocInfoFailed: 'Ошибка получения информации о документе',
       thinkingDone: 'Размышление завершено',
@@ -3433,6 +3607,7 @@ export default {
       multiTurn: 'При включении сохраняется контекст истории диалога',
       historyRounds: 'Количество последних раундов диалога для сохранения в контексте',
       rewrite: 'Автоматическое перефразирование вопросов в многооборотном диалоге для разрешения ссылок и дополнения',
+      queryUnderstandModel: 'Модель для понимания запроса (перефразирование и распознавание намерения). Пустое значение — использовать основную модель чата.',
       rewriteSystemPrompt: 'Системный промпт для перефразирования вопросов (пустое = по умолчанию)',
       rewriteUserPrompt: 'Шаблон пользовательского промпта для перефразирования (пустое = по умолчанию)',
       selectTools: 'Выберите инструменты, доступные агенту',
@@ -3588,6 +3763,7 @@ export default {
         wikiQa: 'Wiki отключён',
         hybridRagWiki: 'Поиск не включён',
         dataAnalysis: 'Требуется RAG (не FAQ)',
+        quickAnswer: 'Быстрый ответ требует RAG-поиск',
         generic: 'Несовместимо с типом',
       },
       kbIncompatibleWarn: 'Выбранные базы знаний ({count}) несовместимы с текущим типом. Настройте вручную.'
@@ -3602,8 +3778,8 @@ export default {
     llmCallTimeout: {
       label: 'Таймаут вызова LLM',
       desc: 'Максимальное время ожидания одного вызова LLM (в секундах). По истечении этого времени вызов прерывается',
-      hint: '0 означает бесконечное ожидание (не рекомендуется)',
-      placeholder: 'Введите количество секунд, рекомендуемый диапазон 60-600',
+      hint: 'Оставьте пустым или 0, чтобы использовать значение по умолчанию (120 секунд)',
+      placeholder: 'Введите количество секунд, рекомендуемый диапазон 60-1800',
     },
     imageUpload: {
       navLabel: 'Мультимодальность',
@@ -3638,6 +3814,10 @@ export default {
       thresholdDesc: 'Если сходство вопроса с FAQ превышает это значение, ответ FAQ используется напрямую',
       boostLabel: 'Коэффициент FAQ',
       boostDesc: 'Умножение оценки релевантности FAQ на этот коэффициент для повышения ранга'
+    },
+    dataAnalysis: {
+      enableLabel: 'Включить анализ табличных данных',
+      enableDesc: 'Если извлечённые фрагменты относятся к файлу CSV/Excel, перед ответом LLM сгенерирует SQL-запрос DuckDB. Это добавляет ещё один вызов LLM и несколько секунд задержки, поэтому включайте только при действительной необходимости SQL-анализа.'
     },
     fallback: {
       fixed: 'Фиксированный ответ',
@@ -3695,9 +3875,29 @@ export default {
   listSpaceSidebar: {
     title: 'Фильтр',
     all: 'Все',
+    workspace: 'Рабочая область',
     mine: 'Мои',
-    sharedToMe: 'Совместные',
-    spaces: 'Пространства'
+    spaces: 'Доступно мне',
+    favorites: 'Избранное',
+    recents: 'Недавние'
+  },
+  listFilter: {
+    creator: 'Автор',
+    allCreators: 'Все',
+    createdByMe: 'Созданные мной',
+    createdByOthers: 'Созданные другими'
+  },
+  resourceOrigin: {
+    mine: 'Мои',
+    mineTooltip: 'Создано вами',
+    tenant: 'Рабочая область',
+    tenantTooltip: 'Создано другим участником рабочей области',
+    tenantTooltipWithCreator: 'Создано {creator}',
+    space: 'Пространство',
+    spaceTooltip: 'Через пространство "{space}"',
+    spaceTooltipWithTenant: 'Через пространство "{space}" · от {tenant}',
+    shared: 'Внешнее',
+    sharedTooltip: 'Доступ из внешнего арендатора через общее пространство'
   },
   promptTemplate: {
     noTemplates: 'No templates available',
@@ -3710,7 +3910,7 @@ export default {
   },
   organization: {
     title: 'Shared Spaces',
-    subtitle: 'Create or join shared spaces to share knowledge bases and agents with your team',
+    subtitle: 'Create or join shared spaces so multiple workspaces can collaborate and share knowledge bases and agents',
     createOrg: 'Create Space',
     createOrgShort: 'New',
     joinOrg: 'Join Space',
@@ -3734,6 +3934,13 @@ export default {
     refreshInviteCode: 'Refresh Invite Code',
     inviteCodeRefreshed: 'Invite code refreshed',
     inviteCodeRefreshFailed: 'Failed to refresh invite code',
+    rbac: {
+      needTenantAdmin: 'Требуется роль администратора тенанта',
+      needTenantAdminTip: 'Для этого действия требуется роль admin или выше в текущем тенанте. Обратитесь к владельцу тенанта.',
+      cannotCreate: 'Недостаточно прав в текущем тенанте для создания общего пространства',
+      cannotJoin: 'Недостаточно прав в текущем тенанте для присоединения к общему пространству',
+      cannotManage: 'Недостаточно прав в текущем тенанте для управления общим пространством',
+    },
     join: {
       title: 'Join Space',
       joining: 'Joining space...',
@@ -3840,7 +4047,7 @@ export default {
       editTitle: 'Space Settings',
       detailTitle: 'Space Details',
       myRoleDesc: 'Your role in this space determines your permissions',
-      membersDesc: 'View and manage space members, adjust member roles',
+      membersDesc: 'Просмотр и управление участниками пространства и их ролями. Каждый участник — это один тенант: все пользователи внутри тенанта получают одинаковый доступ к пространству.',
       sharedDesc: 'View all knowledge bases shared to this space',
       noSharedKB: 'No shared knowledge bases yet',
       noSharedKBTip: 'Knowledge base owners can share their knowledge bases to this space in KB settings',
@@ -3943,9 +4150,13 @@ export default {
       button: 'Add Member',
       dialogTitle: 'Add Member',
       tip: 'Added users will immediately become space members and can access shared knowledge bases.',
+      tipTenant: 'Членство задаётся на уровне тенанта: после присоединения тенанта все его пользователи получают доступ к этому пространству. Результаты ниже сгруппированы по тенанту.',
       searchUser: 'Select User',
+      searchTenant: 'Выбрать тенант',
       searchPlaceholder: 'Search by username or email...',
+      searchTenantPlaceholder: 'Поиск по имени тенанта, пользователя или email...',
       searchHint: 'Type at least 2 characters to search',
+      searchTenantHint: 'Введите не менее 2 символов; результаты сгруппированы по тенанту и не включают уже добавленных.',
       selectRole: 'Assign Role',
       confirmBtn: 'Add',
       success: 'Member added successfully',
@@ -4027,6 +4238,7 @@ export default {
     connected: 'Подключено',
     connectionFailed: 'Подключение не удалось',
     isRequired: 'обязательно для заполнения',
+    credentialsLabel: 'учётные данные',
     resourceHint: 'Выберите пространства или папки для синхронизации',
     untitled: 'Без названия',
     resourceLoadFailed: 'Не удалось загрузить список ресурсов',
@@ -4189,6 +4401,135 @@ export default {
       enabled: 'Включено',
       botIdentity: 'Идентификатор бота',
       createdAt: 'Создано',
+    },
+  },
+  credential: {
+    configured: 'Настроено',
+    unconfigured: 'Не настроено',
+    configure: 'Настроить',
+    update: 'Заменить',
+    remove: 'Удалить',
+    inputPlaceholder: 'Введите значение',
+    savedToast: 'Учётные данные сохранены',
+    saveFailed: 'Не удалось сохранить учётные данные',
+    removedToast: 'Учётные данные удалены',
+    removeFailed: 'Не удалось удалить учётные данные',
+    confirmRemoveTitle: 'Удалить {field}?',
+    confirmRemoveBody:
+      'Сохранённые учётные данные будут безвозвратно удалены. Интеграции, использующие их, перестанут работать до настройки нового значения.',
+  },
+  userProfile: {
+    title: 'Информация о пользователе',
+    description: 'Просмотр базовых данных аккаунта (ID пользователя, имя, email, дата регистрации).',
+  },
+  tenantMember: {
+    title: 'Участники',
+    sectionDescription: 'Приглашайте коллег в тенант и управляйте их ролями. Добавлять и удалять участников может только Владелец.',
+    learnRbacGuide: 'Подробнее о RBAC',
+    totalCount: 'Участников: {n}',
+    listTitle: 'Участники пространства',
+    filterMatched: 'найдено: {n}',
+    loading: 'Загрузка участников…',
+    retry: 'Повторить',
+    empty: 'Участников пока нет. Пригласите коллегу, чтобы начать.',
+    emptySearch: 'Нет участников по запросу "{q}".',
+    searchPlaceholder: 'Поиск по имени или email',
+    permissions: {
+      title: 'Права ролей',
+      desc: 'Что может делать каждая роль внутри этого тенанта. Контролируется сервером; элементы UI лишь отражают правила.',
+      iconHint: 'Наведите курсор, чтобы открыть описание прав ролей',
+      manageMembers: 'Управление участниками',
+      manageTenantConfig: 'Изменение настроек тенанта',
+      manageInfra: 'Настройка моделей / векторных хранилищ / IM-каналов',
+      createOwnKB: 'Создание и редактирование своих БЗ и агентов',
+      readAll: 'Чтение содержимого тенанта',
+    },
+    columns: {
+      member: 'Имя и email',
+      username: 'Имя',
+      email: 'Email',
+      role: 'Роль',
+      joinedAt: 'Дата вступления',
+      operations: 'Действия',
+    },
+    role: {
+      owner: 'Владелец',
+      admin: 'Администратор',
+      contributor: 'Участник',
+      viewer: 'Наблюдатель',
+    },
+    add: {
+      button: 'Пригласить',
+      dialogTitle: 'Пригласить участника',
+      emailLabel: 'Email',
+      emailPlaceholder: "invitee{'@'}example.com",
+      roleLabel: 'Роль',
+      submit: 'Пригласить',
+      success: 'Участник добавлен',
+    },
+    remove: {
+      button: 'Удалить',
+      confirmTitle: 'Удалить участника?',
+      confirmBody: 'Вы уверены, что хотите удалить {name} из этого тенанта? Доступ будет отозван немедленно.',
+      confirm: 'Удалить',
+      success: 'Участник удалён',
+    },
+    leave: {
+      button: 'Покинуть тенант',
+      confirmTitle: 'Покинуть этот тенант?',
+      confirmBody: 'Вы потеряете доступ ко всем базам знаний и агентам в этом тенанте. Позже вас можно будет пригласить снова.',
+      confirm: 'Покинуть',
+      success: 'Вы покинули тенант',
+    },
+    roleChange: {
+      success: 'Роль обновлена',
+    },
+    errors: {
+      emailRequired: 'Укажите email',
+      emailFormat: 'Неверный формат email',
+      roleRequired: 'Выберите роль',
+      userNotFound: 'Пользователь с таким email не зарегистрирован. Попросите его зарегистрироваться.',
+      alreadyMember: 'Этот пользователь уже участник тенанта.',
+      lastOwner: 'Нельзя понизить, удалить или покинуть как последний Владелец. Сначала повысьте кого-то ещё до Владельца.',
+      notFound: 'Участник не найден.',
+      noTenant: 'Нет активного тенанта.',
+      invalidRole: 'Роль должна быть owner / admin / contributor / viewer.',
+      generic: 'Что-то пошло не так. Попробуйте ещё раз.',
+    },
+    tabs: {
+      members: 'Участники',
+      audit: 'Журнал аудита',
+    },
+    audit: {
+      tabLabel: 'Журнал аудита',
+      description:
+        'Регистрирует все изменения участников и отказы в доступе в этом тенанте, в обратном хронологическом порядке. Повторные отказы в течение минуты дедуплицируются.',
+      refresh: 'Обновить',
+      loadMore: 'Показать ещё',
+      end: 'Конец журнала.',
+      empty: 'Событий аудита пока нет.',
+      forbidden: 'Нет прав для просмотра журнала аудита.',
+      systemActor: 'Система',
+      requiredRole: 'Требуемая роль: {role}',
+      columns: {
+        time: 'Время',
+        actor: 'Инициатор',
+        action: 'Событие',
+        target: 'Цель',
+        path: 'Запрос',
+        outcome: 'Результат',
+      },
+      action: {
+        'rbac.member_added': 'Добавлен участник',
+        'rbac.member_removed': 'Удалён участник',
+        'rbac.member_role_changed': 'Изменение роли',
+        'rbac.member_left': 'Участник вышел',
+        'rbac.access_denied': 'Доступ запрещён',
+      },
+      outcome: {
+        success: 'Успех',
+        denied: 'Отказ',
+      },
     },
   },
 }

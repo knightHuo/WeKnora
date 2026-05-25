@@ -31,12 +31,41 @@ type VectorStoreService interface {
 	// UpdateStore updates an existing vector store (name only).
 	UpdateStore(ctx context.Context, store *types.VectorStore) error
 	// DeleteStore deletes a vector store by tenant + id.
+	// Rejects deletion when any active knowledge base is bound to the store
+	// (binding guard); the caller must unbind or delete those KBs first.
 	DeleteStore(ctx context.Context, tenantID uint64, id string) error
 	// TestConnection tests connectivity to a vector database.
 	// Returns the detected server version on success (e.g., "7.10.1"), empty string if unknown.
 	TestConnection(ctx context.Context, engineType types.RetrieverEngineType, config types.ConnectionConfig) (string, error)
 	// SaveDetectedVersion updates the connection_config.version for a stored vector store.
 	SaveDetectedVersion(ctx context.Context, store *types.VectorStore, version string) error
+
+	// ResolveStoreView returns the API-safe display projection of a single
+	// store ID, scoped to the given tenant. Tries DB stores first, then the
+	// cached env-store set. Returns types.UnavailableStoreDisplay() when the
+	// store cannot be resolved — callers should still succeed in such cases
+	// (the response carries a "unavailable" status signal for the UI).
+	//
+	// Never returns connection credentials in any form: the StoreDisplay
+	// payload carries only Name / Source / EngineType / Status.
+	ResolveStoreView(ctx context.Context, tenantID uint64, storeID string) (types.StoreDisplay, error)
+
+	// BatchResolveStoreView resolves multiple store IDs in a single DB read
+	// plus the cached env-store match. Returned map keys are the storeIDs
+	// originally requested; missing IDs map to types.UnavailableStoreDisplay().
+	//
+	// Intended for list endpoints that need store metadata for many KBs at
+	// once without incurring N+1 ResolveStoreView calls.
+	BatchResolveStoreView(ctx context.Context, tenantID uint64, storeIDs []string) (map[string]types.StoreDisplay, error)
+
+	// EnvDefaultStoreView returns the display payload for KBs that fall
+	// back to the env-configured store. Unlike DefaultStoreDisplay() in
+	// the types package, this method also fills the engine type
+	// (e.g. "postgres") so UIs can render the same badge shape for
+	// env-bound and user-bound KBs. Independent of ResolveStoreView so
+	// list paths can use it without violating the "no per-KB
+	// ResolveStoreView" invariant.
+	EnvDefaultStoreView(ctx context.Context) types.StoreDisplay
 }
 
 // VectorStoreRepository defines the repository interface for VectorStore CRUD.

@@ -19,6 +19,69 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/agent/tool-approvals/{pending_id}": {
+            "post": {
+                "security": [
+                    {
+                        "Bearer": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "用户审批通过或驳回一次工具调用（用于 Agent 阻塞等待审批的场景）",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "MCP服务"
+                ],
+                "summary": "处理 MCP 工具调用待审批请求",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "待审批记录 ID",
+                        "name": "pending_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "{decision: \\",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "审批结果",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "请求参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
+                        }
+                    },
+                    "404": {
+                        "description": "待审批记录不存在",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
+                        }
+                    }
+                }
+            }
+        },
         "/agents": {
             "get": {
                 "security": [
@@ -391,6 +454,57 @@ const docTemplate = `{
                 }
             }
         },
+        "/agents/{id}/shares/{share_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "Bearer": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "从智能体的共享列表中移除指定共享关系",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "组织"
+                ],
+                "summary": "取消智能体共享",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "智能体 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "共享记录 ID",
+                        "name": "share_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "success: true",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "无权限",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
+                        }
+                    }
+                }
+            }
+        },
         "/agents/{id}/suggested-questions": {
             "get": {
                 "security": [
@@ -457,1229 +571,6 @@ const docTemplate = `{
                         "description": "智能体不存在",
                         "schema": {
                             "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/datasource": {
-            "get": {
-                "description": "List all data sources for a specific knowledge base",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "DataSource"
-                ],
-                "summary": "List data sources for a knowledge base",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Knowledge base ID",
-                        "name": "kb_id",
-                        "in": "query",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.DataSource"
-                            }
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            },
-            "post": {
-                "description": "Create a new data source configuration for a knowledge base",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "DataSource"
-                ],
-                "summary": "Create a new data source",
-                "parameters": [
-                    {
-                        "description": "Data source configuration",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.DataSource"
-                        }
-                    }
-                ],
-                "responses": {
-                    "201": {
-                        "description": "Created",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.DataSource"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/datasource/logs/{log_id}": {
-            "get": {
-                "description": "Retrieve a specific sync log entry",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "DataSource"
-                ],
-                "summary": "Get specific sync log",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Sync log ID",
-                        "name": "log_id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.SyncLog"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/datasource/types": {
-            "get": {
-                "description": "Get list of available data source connectors",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "DataSource"
-                ],
-                "summary": "Get available connectors",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_datasource.ConnectorMetadata"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/datasource/validate-credentials": {
-            "post": {
-                "description": "Validate connectivity to an external data source using type + credentials",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "DataSource"
-                ],
-                "summary": "Test connection with raw credentials (no persistence)",
-                "parameters": [
-                    {
-                        "description": "type and credentials",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "type": "object"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/datasource/{id}": {
-            "get": {
-                "description": "Retrieve a data source configuration by ID",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "DataSource"
-                ],
-                "summary": "Get a data source by ID",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Data source ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.DataSource"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            },
-            "put": {
-                "description": "Update an existing data source configuration",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "DataSource"
-                ],
-                "summary": "Update a data source",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Data source ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "Updated configuration",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.DataSource"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.DataSource"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            },
-            "delete": {
-                "description": "Delete a data source (soft delete)",
-                "tags": [
-                    "DataSource"
-                ],
-                "summary": "Delete a data source",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Data source ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "204": {
-                        "description": "No Content"
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/datasource/{id}/logs": {
-            "get": {
-                "description": "Retrieve sync history for a data source",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "DataSource"
-                ],
-                "summary": "Get sync logs",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Data source ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "integer",
-                        "description": "Limit (default: 10)",
-                        "name": "limit",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "description": "Offset (default: 0)",
-                        "name": "offset",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.SyncLog"
-                            }
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/datasource/{id}/pause": {
-            "post": {
-                "description": "Pause a data source's scheduled syncs",
-                "tags": [
-                    "DataSource"
-                ],
-                "summary": "Pause data source",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Data source ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/datasource/{id}/resources": {
-            "get": {
-                "description": "List resources available for sync in the external system",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "DataSource"
-                ],
-                "summary": "List available resources in data source",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Data source ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.Resource"
-                            }
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/datasource/{id}/resume": {
-            "post": {
-                "description": "Resume a paused data source",
-                "tags": [
-                    "DataSource"
-                ],
-                "summary": "Resume data source",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Data source ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/datasource/{id}/sync": {
-            "post": {
-                "description": "Trigger an immediate sync for a data source",
-                "tags": [
-                    "DataSource"
-                ],
-                "summary": "Trigger immediate sync",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Data source ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.SyncLog"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/datasource/{id}/validate": {
-            "post": {
-                "description": "Validate the connection to an external data source",
-                "tags": [
-                    "DataSource"
-                ],
-                "summary": "Test data source connection",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Data source ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/knowledgebase/{kb_id}/wiki/auto-fix": {
-            "post": {
-                "security": [
-                    {
-                        "Bearer": []
-                    }
-                ],
-                "description": "Automatically fix fixable wiki issues (broken links, etc.)",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Wiki"
-                ],
-                "summary": "Auto-fix wiki issues",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Knowledge base ID",
-                        "name": "kb_id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/knowledgebase/{kb_id}/wiki/graph": {
-            "get": {
-                "security": [
-                    {
-                        "Bearer": []
-                    }
-                ],
-                "description": "Returns the wiki link graph data for visualization",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Wiki"
-                ],
-                "summary": "Get wiki link graph",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Knowledge base ID",
-                        "name": "kb_id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.WikiGraphData"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/knowledgebase/{kb_id}/wiki/index": {
-            "get": {
-                "security": [
-                    {
-                        "Bearer": []
-                    }
-                ],
-                "description": "Returns the wiki index page (creates default if not exists)",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Wiki"
-                ],
-                "summary": "Get wiki index page",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Knowledge base ID",
-                        "name": "kb_id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.WikiPage"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/knowledgebase/{kb_id}/wiki/issues": {
-            "get": {
-                "security": [
-                    {
-                        "Bearer": []
-                    }
-                ],
-                "description": "List issues flagged on wiki pages with optional filtering",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Wiki"
-                ],
-                "summary": "List wiki page issues",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Knowledge base ID",
-                        "name": "kb_id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Filter by page slug",
-                        "name": "slug",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Filter by status (pending, ignored, resolved)",
-                        "name": "status",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.WikiPageIssue"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/knowledgebase/{kb_id}/wiki/issues/{issue_id}/status": {
-            "put": {
-                "security": [
-                    {
-                        "Bearer": []
-                    }
-                ],
-                "description": "Update the status of a flagged wiki page issue",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Wiki"
-                ],
-                "summary": "Update wiki page issue status",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Knowledge base ID",
-                        "name": "kb_id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Issue ID",
-                        "name": "issue_id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "New status {'status': 'ignored'}",
-                        "name": "status",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "type": "object"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/knowledgebase/{kb_id}/wiki/lint": {
-            "get": {
-                "security": [
-                    {
-                        "Bearer": []
-                    }
-                ],
-                "description": "Perform a comprehensive health check on the wiki",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Wiki"
-                ],
-                "summary": "Run wiki lint",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Knowledge base ID",
-                        "name": "kb_id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_application_service.WikiLintReport"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/knowledgebase/{kb_id}/wiki/log": {
-            "get": {
-                "security": [
-                    {
-                        "Bearer": []
-                    }
-                ],
-                "description": "Returns the wiki operation log page (creates default if not exists)",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Wiki"
-                ],
-                "summary": "Get wiki operation log",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Knowledge base ID",
-                        "name": "kb_id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.WikiPage"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/knowledgebase/{kb_id}/wiki/pages": {
-            "get": {
-                "security": [
-                    {
-                        "Bearer": []
-                    }
-                ],
-                "description": "List wiki pages with optional filtering and pagination",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Wiki"
-                ],
-                "summary": "List wiki pages",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Knowledge base ID",
-                        "name": "kb_id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Filter by page type",
-                        "name": "page_type",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Filter by status",
-                        "name": "status",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Full-text search",
-                        "name": "query",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "description": "Page number",
-                        "name": "page",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "description": "Page size",
-                        "name": "page_size",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Sort field",
-                        "name": "sort_by",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Sort order (asc/desc)",
-                        "name": "sort_order",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.WikiPageListResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
-                        }
-                    }
-                }
-            },
-            "post": {
-                "security": [
-                    {
-                        "Bearer": []
-                    }
-                ],
-                "description": "Create a new wiki page in the knowledge base",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Wiki"
-                ],
-                "summary": "Create a wiki page",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Knowledge base ID",
-                        "name": "kb_id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "Wiki page data",
-                        "name": "page",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.WikiPage"
-                        }
-                    }
-                ],
-                "responses": {
-                    "201": {
-                        "description": "Created",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.WikiPage"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/knowledgebase/{kb_id}/wiki/pages/{slug}": {
-            "get": {
-                "security": [
-                    {
-                        "Bearer": []
-                    }
-                ],
-                "description": "Retrieve a wiki page by its slug",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Wiki"
-                ],
-                "summary": "Get a wiki page by slug",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Knowledge base ID",
-                        "name": "kb_id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Page slug",
-                        "name": "slug",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.WikiPage"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
-                        }
-                    }
-                }
-            },
-            "put": {
-                "security": [
-                    {
-                        "Bearer": []
-                    }
-                ],
-                "description": "Update an existing wiki page by slug",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Wiki"
-                ],
-                "summary": "Update a wiki page",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Knowledge base ID",
-                        "name": "kb_id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Page slug",
-                        "name": "slug",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "Updated wiki page data",
-                        "name": "page",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.WikiPage"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.WikiPage"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
-                        }
-                    }
-                }
-            },
-            "delete": {
-                "security": [
-                    {
-                        "Bearer": []
-                    }
-                ],
-                "description": "Soft-delete a wiki page by slug",
-                "tags": [
-                    "Wiki"
-                ],
-                "summary": "Delete a wiki page",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Knowledge base ID",
-                        "name": "kb_id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Page slug",
-                        "name": "slug",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "204": {
-                        "description": "No Content"
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/knowledgebase/{kb_id}/wiki/rebuild-links": {
-            "post": {
-                "security": [
-                    {
-                        "Bearer": []
-                    }
-                ],
-                "description": "Re-parse all pages and rebuild bidirectional link references",
-                "tags": [
-                    "Wiki"
-                ],
-                "summary": "Rebuild wiki links",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Knowledge base ID",
-                        "name": "kb_id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/knowledgebase/{kb_id}/wiki/search": {
-            "get": {
-                "security": [
-                    {
-                        "Bearer": []
-                    }
-                ],
-                "description": "Full-text search over wiki pages",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Wiki"
-                ],
-                "summary": "Search wiki pages",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Knowledge base ID",
-                        "name": "kb_id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Search query",
-                        "name": "q",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "integer",
-                        "description": "Max results (default 10)",
-                        "name": "limit",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.WikiPage"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/knowledgebase/{kb_id}/wiki/stats": {
-            "get": {
-                "security": [
-                    {
-                        "Bearer": []
-                    }
-                ],
-                "description": "Returns aggregate statistics about the wiki",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Wiki"
-                ],
-                "summary": "Get wiki statistics",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Knowledge base ID",
-                        "name": "kb_id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.WikiStats"
                         }
                     }
                 }
@@ -1763,6 +654,30 @@ const docTemplate = `{
                         "description": "请求参数错误",
                         "schema": {
                             "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/config": {
+            "get": {
+                "description": "返回当前部署的注册模式等公开认证配置，供前端决定是否展示注册入口",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "认证"
+                ],
+                "summary": "获取认证配置",
+                "responses": {
+                    "200": {
+                        "description": "认证配置",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
                         }
                     }
                 }
@@ -1867,6 +782,58 @@ const docTemplate = `{
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "未授权",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/me/preferences": {
+            "put": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "按 PATCH 语义合并用户偏好（仅覆盖请求体里出现的字段，其余字段保持不变），\n数据存放在 users.preferences (JSON)，跨设备/浏览器自动同步。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "认证"
+                ],
+                "summary": "更新当前用户的个性化设置",
+                "parameters": [
+                    {
+                        "description": "Preferences patch",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.updateMyPreferencesRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "更新后的偏好",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "请求参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
                         }
                     },
                     "401": {
@@ -2077,6 +1044,65 @@ const docTemplate = `{
                 }
             }
         },
+        "/auth/switch-tenant": {
+            "post": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "为当前用户在目标租户重新签发访问令牌；要求该用户在目标租户存在 active 成员关系",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "认证"
+                ],
+                "summary": "切换激活租户",
+                "parameters": [
+                    {
+                        "description": "切换请求",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "refresh_token": {
+                                    "type": "string"
+                                },
+                                "tenant_id": {
+                                    "type": "integer"
+                                }
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.LoginResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
+                        }
+                    },
+                    "403": {
+                        "description": "无该租户成员关系",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
+                        }
+                    }
+                }
+            }
+        },
         "/auth/validate": {
             "get": {
                 "security": [
@@ -2107,6 +1133,69 @@ const docTemplate = `{
                         "description": "令牌无效",
                         "schema": {
                             "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
+                        }
+                    }
+                }
+            }
+        },
+        "/chunker/preview": {
+            "post": {
+                "security": [
+                    {
+                        "Bearer": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "对提交的文本运行自适应分块器并返回分块预览，不写入数据库不生成 embedding。文本最大 64k 字符",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "分块"
+                ],
+                "summary": "预览分块结果",
+                "parameters": [
+                    {
+                        "description": "{text, chunking_config}",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.PreviewChunkingRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "分块结果",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.PreviewChunkingResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "请求参数错误",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "413": {
+                        "description": "文本超过预览限制",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "504": {
+                        "description": "分块超时",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
                         }
                     }
                 }
@@ -2465,6 +1554,554 @@ const docTemplate = `{
                 }
             }
         },
+        "/datasource": {
+            "get": {
+                "description": "List all data sources for a specific knowledge base",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "DataSource"
+                ],
+                "summary": "List data sources for a knowledge base",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Knowledge base ID",
+                        "name": "kb_id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.DataSource"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "Create a new data source configuration for a knowledge base",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "DataSource"
+                ],
+                "summary": "Create a new data source",
+                "parameters": [
+                    {
+                        "description": "Data source configuration",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.DataSource"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.DataSource"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/datasource/logs/{log_id}": {
+            "get": {
+                "description": "Retrieve a specific sync log entry",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "DataSource"
+                ],
+                "summary": "Get specific sync log",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Sync log ID",
+                        "name": "log_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.SyncLog"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/datasource/types": {
+            "get": {
+                "description": "Get list of available data source connectors",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "DataSource"
+                ],
+                "summary": "Get available connectors",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_datasource.ConnectorMetadata"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/datasource/validate-credentials": {
+            "post": {
+                "description": "Validate connectivity to an external data source using type + credentials",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "DataSource"
+                ],
+                "summary": "Test connection with raw credentials (no persistence)",
+                "parameters": [
+                    {
+                        "description": "type and credentials",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/datasource/{id}": {
+            "get": {
+                "description": "Retrieve a data source configuration by ID",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "DataSource"
+                ],
+                "summary": "Get a data source by ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Data source ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.DataSource"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "put": {
+                "description": "Update an existing data source configuration",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "DataSource"
+                ],
+                "summary": "Update a data source",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Data source ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Updated configuration",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.DataSource"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.DataSource"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "Delete a data source (soft delete)",
+                "tags": [
+                    "DataSource"
+                ],
+                "summary": "Delete a data source",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Data source ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/datasource/{id}/logs": {
+            "get": {
+                "description": "Retrieve sync history for a data source",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "DataSource"
+                ],
+                "summary": "Get sync logs",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Data source ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Limit (default: 10)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Offset (default: 0)",
+                        "name": "offset",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.SyncLog"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/datasource/{id}/pause": {
+            "post": {
+                "description": "Pause a data source's scheduled syncs",
+                "tags": [
+                    "DataSource"
+                ],
+                "summary": "Pause data source",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Data source ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/datasource/{id}/resources": {
+            "get": {
+                "description": "List resources available for sync in the external system",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "DataSource"
+                ],
+                "summary": "List available resources in data source",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Data source ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.Resource"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/datasource/{id}/resume": {
+            "post": {
+                "description": "Resume a paused data source",
+                "tags": [
+                    "DataSource"
+                ],
+                "summary": "Resume data source",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Data source ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/datasource/{id}/sync": {
+            "post": {
+                "description": "Trigger an immediate sync for a data source",
+                "tags": [
+                    "DataSource"
+                ],
+                "summary": "Trigger immediate sync",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Data source ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.SyncLog"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/datasource/{id}/validate": {
+            "post": {
+                "description": "Validate the connection to an external data source",
+                "tags": [
+                    "DataSource"
+                ],
+                "summary": "Test data source connection",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Data source ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/evaluation/": {
             "get": {
                 "security": [
@@ -2606,8 +2243,8 @@ const docTemplate = `{
                 }
             }
         },
-        "/initialization/extract/relations": {
-            "post": {
+        "/im-channels/{id}": {
+            "put": {
                 "security": [
                     {
                         "Bearer": []
@@ -2616,7 +2253,7 @@ const docTemplate = `{
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "从文本中提取实体和关系",
+                "description": "更新指定 IM 渠道的名称、模式、知识库、凭证或启用状态",
                 "consumes": [
                     "application/json"
                 ],
@@ -2624,152 +2261,282 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "初始化"
+                    "IM 渠道"
                 ],
-                "summary": "提取文本关系",
-                "parameters": [
-                    {
-                        "description": "提取请求",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/internal_handler.TextRelationExtractionRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "提取结果",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "400": {
-                        "description": "请求参数错误",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
-                        }
-                    }
-                }
-            }
-        },
-        "/initialization/fabri/tag": {
-            "get": {
-                "description": "随机生成一组标签",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "初始化"
-                ],
-                "summary": "生成随机标签",
-                "responses": {
-                    "200": {
-                        "description": "生成的标签",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    }
-                }
-            }
-        },
-        "/initialization/fabri/text": {
-            "post": {
-                "security": [
-                    {
-                        "Bearer": []
-                    },
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "description": "根据标签生成示例文本",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "初始化"
-                ],
-                "summary": "生成示例文本",
-                "parameters": [
-                    {
-                        "description": "生成请求",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/internal_handler.FabriTextRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "生成的文本",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "400": {
-                        "description": "请求参数错误",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
-                        }
-                    }
-                }
-            }
-        },
-        "/initialization/kb/{kbId}": {
-            "post": {
-                "security": [
-                    {
-                        "Bearer": []
-                    },
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "description": "根据知识库ID执行完整配置更新",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "初始化"
-                ],
-                "summary": "初始化知识库配置",
+                "summary": "更新 IM 渠道",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "知识库ID",
-                        "name": "kbId",
+                        "description": "渠道 ID",
+                        "name": "id",
                         "in": "path",
                         "required": true
                     },
                     {
-                        "description": "初始化请求",
+                        "description": "更新字段（name/mode/output_mode/knowledge_base_id/credentials/enabled）",
                         "name": "request",
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "type": "object"
+                            "type": "object",
+                            "additionalProperties": true
                         }
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "初始化成功",
+                        "description": "更新后的渠道",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "请求参数错误",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "渠道不存在",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "Bearer": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "删除指定 IM 渠道",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "IM 渠道"
+                ],
+                "summary": "删除 IM 渠道",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "渠道 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "success: true",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "请求参数错误",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "渠道不存在",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/im-channels/{id}/toggle": {
+            "post": {
+                "security": [
+                    {
+                        "Bearer": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "切换指定 IM 渠道的启用状态",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "IM 渠道"
+                ],
+                "summary": "启用/停用 IM 渠道",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "渠道 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "更新后的渠道",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "请求参数错误",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "渠道不存在",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/im/callback/{channel_id}": {
+            "get": {
+                "description": "接收各 IM 平台的事件回调；走平台自身签名校验，不使用 API Key",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "IM 回调"
+                ],
+                "summary": "IM 平台回调",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "渠道 ID",
+                        "name": "channel_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "处理结果",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "请求参数错误",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "签名校验失败",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "接收各 IM 平台的事件回调；走平台自身签名校验，不使用 API Key",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "IM 回调"
+                ],
+                "summary": "IM 平台回调",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "渠道 ID",
+                        "name": "channel_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "处理结果",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "请求参数错误",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "签名校验失败",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/initialization/asr/check": {
+            "post": {
+                "security": [
+                    {
+                        "Bearer": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "检查ASR（语音识别）模型连接是否正常，通过发送一段静默音频测试 /v1/audio/transcriptions 端点",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "初始化"
+                ],
+                "summary": "检查ASR模型",
+                "parameters": [
+                    {
+                        "description": "ASR检查请求",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.ModelTestRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "检查结果",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
@@ -2784,7 +2551,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/initialization/kb/{kbId}/config": {
+        "/initialization/config/{kbId}": {
             "get": {
                 "security": [
                     {
@@ -2891,56 +2658,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/initialization/models/asr/check": {
-            "post": {
-                "security": [
-                    {
-                        "Bearer": []
-                    },
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "description": "检查ASR（语音识别）模型连接是否正常，通过发送一段静默音频测试 /v1/audio/transcriptions 端点",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "初始化"
-                ],
-                "summary": "检查ASR模型",
-                "parameters": [
-                    {
-                        "description": "ASR检查请求",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "type": "object"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "检查结果",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "400": {
-                        "description": "请求参数错误",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
-                        }
-                    }
-                }
-            }
-        },
-        "/initialization/models/embedding/test": {
+        "/initialization/embedding/test": {
             "post": {
                 "security": [
                     {
@@ -2968,7 +2686,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "type": "object"
+                            "$ref": "#/definitions/internal_handler.ModelTestRequest"
                         }
                     }
                 ],
@@ -2989,17 +2707,9 @@ const docTemplate = `{
                 }
             }
         },
-        "/initialization/models/remote/check": {
+        "/initialization/extract/fabri-tag": {
             "post": {
-                "security": [
-                    {
-                        "Bearer": []
-                    },
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "description": "检查远程API模型连接是否正常",
+                "description": "随机生成一组标签",
                 "consumes": [
                     "application/json"
                 ],
@@ -3009,21 +2719,53 @@ const docTemplate = `{
                 "tags": [
                     "初始化"
                 ],
-                "summary": "检查远程模型",
+                "summary": "生成随机标签",
+                "responses": {
+                    "200": {
+                        "description": "生成的标签",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/initialization/extract/fabri-text": {
+            "post": {
+                "security": [
+                    {
+                        "Bearer": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "根据标签生成示例文本",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "初始化"
+                ],
+                "summary": "生成示例文本",
                 "parameters": [
                     {
-                        "description": "模型检查请求",
+                        "description": "生成请求",
                         "name": "request",
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_handler.RemoteModelCheckRequest"
+                            "$ref": "#/definitions/internal_handler.FabriTextRequest"
                         }
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "检查结果",
+                        "description": "生成的文本",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
@@ -3038,7 +2780,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/initialization/models/rerank/check": {
+        "/initialization/extract/text-relation": {
             "post": {
                 "security": [
                     {
@@ -3048,7 +2790,7 @@ const docTemplate = `{
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "检查Rerank模型连接和功能是否正常",
+                "description": "从文本中提取实体和关系",
                 "consumes": [
                     "application/json"
                 ],
@@ -3058,21 +2800,77 @@ const docTemplate = `{
                 "tags": [
                     "初始化"
                 ],
-                "summary": "检查Rerank模型",
+                "summary": "提取文本关系",
                 "parameters": [
                     {
-                        "description": "Rerank检查请求",
+                        "description": "提取请求",
                         "name": "request",
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "type": "object"
+                            "$ref": "#/definitions/internal_handler.TextRelationExtractionRequest"
                         }
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "检查结果",
+                        "description": "提取结果",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "请求参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
+                        }
+                    }
+                }
+            }
+        },
+        "/initialization/initialize/{kbId}": {
+            "post": {
+                "security": [
+                    {
+                        "Bearer": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "根据知识库ID执行完整配置更新",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "初始化"
+                ],
+                "summary": "初始化知识库配置",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "知识库ID",
+                        "name": "kbId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "初始化请求",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.InitializationRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "初始化成功",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
@@ -3167,39 +2965,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/initialization/ollama/download/tasks": {
-            "get": {
-                "security": [
-                    {
-                        "Bearer": []
-                    },
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "description": "列出所有Ollama模型下载任务",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "初始化"
-                ],
-                "summary": "列出下载任务",
-                "responses": {
-                    "200": {
-                        "description": "任务列表",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    }
-                }
-            }
-        },
-        "/initialization/ollama/download/{taskId}": {
+        "/initialization/ollama/download/progress/{taskId}": {
             "get": {
                 "security": [
                     {
@@ -3241,6 +3007,38 @@ const docTemplate = `{
                         "description": "任务不存在",
                         "schema": {
                             "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
+                        }
+                    }
+                }
+            }
+        },
+        "/initialization/ollama/download/tasks": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "列出所有Ollama模型下载任务",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "初始化"
+                ],
+                "summary": "列出下载任务",
+                "responses": {
+                    "200": {
+                        "description": "任务列表",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
                         }
                     }
                 }
@@ -3414,6 +3212,104 @@ const docTemplate = `{
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/initialization/remote/check": {
+            "post": {
+                "security": [
+                    {
+                        "Bearer": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "检查远程API模型连接是否正常",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "初始化"
+                ],
+                "summary": "检查远程模型",
+                "parameters": [
+                    {
+                        "description": "模型检查请求",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.RemoteModelCheckRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "检查结果",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "请求参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
+                        }
+                    }
+                }
+            }
+        },
+        "/initialization/rerank/check": {
+            "post": {
+                "security": [
+                    {
+                        "Bearer": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "检查Rerank模型连接和功能是否正常",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "初始化"
+                ],
+                "summary": "检查Rerank模型",
+                "parameters": [
+                    {
+                        "description": "Rerank检查请求",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.ModelTestRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "检查结果",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "请求参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
                         }
                     }
                 }
@@ -4601,6 +4497,30 @@ const docTemplate = `{
                         "description": "文件类型筛选",
                         "name": "file_type",
                         "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "解析状态筛选 (pending/processing/completed/failed)",
+                        "name": "parse_status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "来源/渠道筛选 (web/api/feishu/notion/yuque/wechat/...，或 manual/url 按 type 过滤)",
+                        "name": "source",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "更新时间起点，RFC3339 格式",
+                        "name": "start_time",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "更新时间终点，RFC3339 格式",
+                        "name": "end_time",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -4884,6 +4804,56 @@ const docTemplate = `{
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/knowledge-bases/{id}/move-targets": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "返回与源知识库 Type 一致、EmbeddingModelID 一致、非临时且不是自身的目标知识库列表",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "知识库"
+                ],
+                "summary": "获取可移动目标知识库列表",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "源知识库 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "可移动目标列表",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "请求参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
+                        }
+                    },
+                    "404": {
+                        "description": "知识库不存在",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
                         }
                     }
                 }
@@ -5452,6 +5422,61 @@ const docTemplate = `{
                 }
             }
         },
+        "/knowledge/batch-delete": {
+            "post": {
+                "security": [
+                    {
+                        "Bearer": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "按 ID 列表批量删除单个知识库下的多个知识条目",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "知识管理"
+                ],
+                "summary": "批量删除知识",
+                "parameters": [
+                    {
+                        "description": "批量删除请求",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.BatchDeleteKnowledgeRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "删除成功",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "请求参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
+                        }
+                    },
+                    "403": {
+                        "description": "权限不足",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
+                        }
+                    }
+                }
+            }
+        },
         "/knowledge/image/{id}/{chunk_id}": {
             "put": {
                 "security": [
@@ -5569,6 +5594,97 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "请求参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
+                        }
+                    }
+                }
+            }
+        },
+        "/knowledge/move": {
+            "post": {
+                "security": [
+                    {
+                        "Bearer": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "将一条或多条知识从源知识库移动到目标知识库（异步），返回任务 ID 用于查询进度",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "知识"
+                ],
+                "summary": "移动知识到其他知识库",
+                "parameters": [
+                    {
+                        "description": "{source_kb_id, target_kb_id, knowledge_ids}",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.MoveKnowledgeRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "任务信息",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.MoveKnowledgeResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "请求参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
+                        }
+                    }
+                }
+            }
+        },
+        "/knowledge/move/progress/{task_id}": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "按任务 ID 查询移动进度",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "知识"
+                ],
+                "summary": "获取知识移动进度",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "移动任务 ID",
+                        "name": "task_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "进度信息",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.KnowledgeMoveProgress"
+                        }
+                    },
+                    "404": {
+                        "description": "任务不存在",
                         "schema": {
                             "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
                         }
@@ -5995,6 +6111,741 @@ const docTemplate = `{
                 }
             }
         },
+        "/knowledgebase/{kb_id}/wiki/auto-fix": {
+            "post": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "Automatically fix fixable wiki issues (broken links, etc.)",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Wiki"
+                ],
+                "summary": "Auto-fix wiki issues",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Knowledge base ID",
+                        "name": "kb_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/knowledgebase/{kb_id}/wiki/graph": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "Returns a slice of the wiki link graph for visualization. Supports\n` + "`" + `mode=overview` + "`" + ` (top-N most-connected pages, default) and\n` + "`" + `mode=ego` + "`" + ` (BFS neighborhood of a center slug) to keep response\nsize tractable for knowledge bases with tens of thousands of pages.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Wiki"
+                ],
+                "summary": "Get wiki link graph",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Knowledge base ID",
+                        "name": "kb_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "overview (default) | ego",
+                        "name": "mode",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Center slug for ego mode",
+                        "name": "center",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Ego BFS depth (1-3, default 1)",
+                        "name": "depth",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Comma-separated page_type allow-list",
+                        "name": "types",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Max nodes to return (default 500, max 2000)",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.WikiGraphData"
+                        }
+                    }
+                }
+            }
+        },
+        "/knowledgebase/{kb_id}/wiki/index": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "Returns the wiki index as intro text plus per-type paginated\ndirectory groups. The heavy directory markdown that used to\nlive in wiki_pages.content was replaced with this structured\nresponse so a KB with tens of thousands of pages no longer\nmaterializes megabytes of TEXT on every index open.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Wiki"
+                ],
+                "summary": "Get wiki index view",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Knowledge base ID",
+                        "name": "kb_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Comma-separated page types (default: all content types)",
+                        "name": "types",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Per-group window size, 1-200 (default 50)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Opaque offset cursor from previous response",
+                        "name": "cursor",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.WikiIndexResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/knowledgebase/{kb_id}/wiki/issues": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "List issues flagged on wiki pages with optional filtering",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Wiki"
+                ],
+                "summary": "List wiki page issues",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Knowledge base ID",
+                        "name": "kb_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by page slug",
+                        "name": "slug",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by status (pending, ignored, resolved)",
+                        "name": "status",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.WikiPageIssue"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/knowledgebase/{kb_id}/wiki/issues/{issue_id}/status": {
+            "put": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "Update the status of a flagged wiki page issue",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Wiki"
+                ],
+                "summary": "Update wiki page issue status",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Knowledge base ID",
+                        "name": "kb_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Issue ID",
+                        "name": "issue_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "New status {'status': 'ignored'}",
+                        "name": "status",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
+                        }
+                    }
+                }
+            }
+        },
+        "/knowledgebase/{kb_id}/wiki/lint": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "Perform a comprehensive health check on the wiki",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Wiki"
+                ],
+                "summary": "Run wiki lint",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Knowledge base ID",
+                        "name": "kb_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_application_service.WikiLintReport"
+                        }
+                    }
+                }
+            }
+        },
+        "/knowledgebase/{kb_id}/wiki/log": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "Returns a paginated feed of wiki operation events (ingest, retract, ...)\nnewest-first. Pagination is cursor-based: pass ` + "`" + `next_cursor` + "`" + ` from the\nprevious response back as ` + "`" + `cursor` + "`" + ` to fetch the next page.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Wiki"
+                ],
+                "summary": "Get wiki operation log",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Knowledge base ID",
+                        "name": "kb_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Opaque cursor from the previous page (empty = newest)",
+                        "name": "cursor",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page size, 1-200 (default 50)",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.WikiLogEntryListResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/knowledgebase/{kb_id}/wiki/pages": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "List wiki pages with optional filtering and pagination",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Wiki"
+                ],
+                "summary": "List wiki pages",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Knowledge base ID",
+                        "name": "kb_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by page type",
+                        "name": "page_type",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by status",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Full-text search",
+                        "name": "query",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page number",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page size",
+                        "name": "page_size",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Sort field",
+                        "name": "sort_by",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Sort order (asc/desc)",
+                        "name": "sort_order",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.WikiPageListResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "Create a new wiki page in the knowledge base",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Wiki"
+                ],
+                "summary": "Create a wiki page",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Knowledge base ID",
+                        "name": "kb_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Wiki page data",
+                        "name": "page",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.WikiPage"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.WikiPage"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
+                        }
+                    }
+                }
+            }
+        },
+        "/knowledgebase/{kb_id}/wiki/pages/{slug}": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "Retrieve a wiki page by its slug",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Wiki"
+                ],
+                "summary": "Get a wiki page by slug",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Knowledge base ID",
+                        "name": "kb_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Page slug",
+                        "name": "slug",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.WikiPage"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "Update an existing wiki page by slug",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Wiki"
+                ],
+                "summary": "Update a wiki page",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Knowledge base ID",
+                        "name": "kb_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Page slug",
+                        "name": "slug",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Updated wiki page data",
+                        "name": "page",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.WikiPage"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.WikiPage"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "Soft-delete a wiki page by slug",
+                "tags": [
+                    "Wiki"
+                ],
+                "summary": "Delete a wiki page",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Knowledge base ID",
+                        "name": "kb_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Page slug",
+                        "name": "slug",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
+                        }
+                    }
+                }
+            }
+        },
+        "/knowledgebase/{kb_id}/wiki/rebuild-links": {
+            "post": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "Re-parse all pages and rebuild bidirectional link references",
+                "tags": [
+                    "Wiki"
+                ],
+                "summary": "Rebuild wiki links",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Knowledge base ID",
+                        "name": "kb_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/knowledgebase/{kb_id}/wiki/search": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "Full-text search over wiki pages",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Wiki"
+                ],
+                "summary": "Search wiki pages",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Knowledge base ID",
+                        "name": "kb_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Search query",
+                        "name": "q",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Max results (default 10)",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.WikiPage"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/knowledgebase/{kb_id}/wiki/stats": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "Returns aggregate statistics about the wiki",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Wiki"
+                ],
+                "summary": "Get wiki statistics",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Knowledge base ID",
+                        "name": "kb_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.WikiStats"
+                        }
+                    }
+                }
+            }
+        },
         "/mcp-services": {
             "get": {
                 "security": [
@@ -6226,6 +7077,122 @@ const docTemplate = `{
                 }
             }
         },
+        "/mcp-services/{id}/credentials": {
+            "put": {
+                "security": [
+                    {
+                        "Bearer": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "为指定字段写入新凭据；省略的字段保留原值；空字符串视为 no-op（如需删除请用 DELETE）",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "MCP服务"
+                ],
+                "summary": "设置 MCP 服务凭据",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "MCP 服务 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "{api_key?: string, token?: string}",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "写入后的凭据状态",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "请求参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
+                        }
+                    },
+                    "404": {
+                        "description": "服务不存在",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
+                        }
+                    }
+                }
+            }
+        },
+        "/mcp-services/{id}/credentials/{field}": {
+            "delete": {
+                "security": [
+                    {
+                        "Bearer": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "删除指定字段的存储凭据；删除已为空的字段是幂等的",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "MCP服务"
+                ],
+                "summary": "移除 MCP 服务的单个凭据字段",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "MCP 服务 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "字段名（api_key | token）",
+                        "name": "field",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "字段名非法",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
+                        }
+                    },
+                    "404": {
+                        "description": "服务不存在",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
+                        }
+                    }
+                }
+            }
+        },
         "/mcp-services/{id}/resources": {
             "get": {
                 "security": [
@@ -6320,6 +7287,76 @@ const docTemplate = `{
                 }
             }
         },
+        "/mcp-services/{id}/tool-approvals/{tool_name}": {
+            "put": {
+                "security": [
+                    {
+                        "Bearer": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "为指定 MCP 服务下的某个工具设置/更新审批要求",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "MCP服务"
+                ],
+                "summary": "设置 MCP 工具人工审批策略",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "MCP 服务 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "工具名",
+                        "name": "tool_name",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "{require_approval: bool}",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "更新结果",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "请求参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
+                        }
+                    },
+                    "404": {
+                        "description": "MCP 服务或工具不存在",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
+                        }
+                    }
+                }
+            }
+        },
         "/mcp-services/{id}/tools": {
             "get": {
                 "security": [
@@ -6362,6 +7399,136 @@ const docTemplate = `{
                         "description": "服务器错误",
                         "schema": {
                             "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
+                        }
+                    }
+                }
+            }
+        },
+        "/me/invitations": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "返回当前登录用户的待接受邀请（默认仅 pending），用于头像入口和 /invitations 收件箱页。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "我的邀请"
+                ],
+                "summary": "列出我的待接受邀请",
+                "parameters": [
+                    {
+                        "type": "boolean",
+                        "description": "是否包含已处理 / 已过期等终止态行（默认 false）",
+                        "name": "include_terminal",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/me/invitations/pending-count": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "轻量级 endpoint，返回当前登录用户的 pending 邀请数，用于头像旁的角标轮询。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "我的邀请"
+                ],
+                "summary": "获取我的待处理邀请数",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/me/invitations/{inv_id}/accept": {
+            "post": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "当前登录用户接受一条 pending 邀请；服务端会同时写入 tenant_members 行。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "我的邀请"
+                ],
+                "summary": "接受邀请",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "邀请 ID",
+                        "name": "inv_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/me/invitations/{inv_id}/decline": {
+            "post": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "当前登录用户拒绝一条 pending 邀请；不创建 tenant_members 行。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "我的邀请"
+                ],
+                "summary": "拒绝邀请",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "邀请 ID",
+                        "name": "inv_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
                         }
                     }
                 }
@@ -6687,6 +7854,42 @@ const docTemplate = `{
                 }
             }
         },
+        "/models/weknoracloud/status": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "检查当前租户的 WeKnoraCloud 凭证是否完好；needs_reinit=true 表示需要重新保存",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "WeKnoraCloud"
+                ],
+                "summary": "检查 WeKnoraCloud 凭证状态",
+                "responses": {
+                    "200": {
+                        "description": "凭证状态",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "服务器错误",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
         "/models/{id}": {
             "get": {
                 "security": [
@@ -6840,7 +8043,7 @@ const docTemplate = `{
                         "Bearer": []
                     }
                 ],
-                "description": "获取当前用户所属的所有组织，并附带各空间内知识库/智能体数量",
+                "description": "获取当前租户所属的所有组织，并附带各空间内知识库/智能体数量",
                 "produces": [
                     "application/json"
                 ],
@@ -7250,6 +8453,50 @@ const docTemplate = `{
                 }
             }
         },
+        "/organizations/{id}/agent-shares": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "返回所有被共享到指定组织的智能体（含我的有效权限）",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "组织"
+                ],
+                "summary": "获取共享到本组织的智能体",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "组织 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "智能体共享列表 + total",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "非组织成员",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
+                        }
+                    }
+                }
+            }
+        },
         "/organizations/{id}/invite": {
             "post": {
                 "security": [
@@ -7496,7 +8743,7 @@ const docTemplate = `{
                         "Bearer": []
                     }
                 ],
-                "description": "获取组织的所有成员",
+                "description": "获取组织的所有成员（按租户）",
                 "produces": [
                     "application/json"
                 ],
@@ -7523,14 +8770,14 @@ const docTemplate = `{
                 }
             }
         },
-        "/organizations/{id}/members/{user_id}": {
+        "/organizations/{id}/members/{tenant_id}": {
             "put": {
                 "security": [
                     {
                         "Bearer": []
                     }
                 ],
-                "description": "更新组织成员的角色（需要管理员权限）",
+                "description": "更新组织成员（租户）的角色（需要管理员权限）",
                 "consumes": [
                     "application/json"
                 ],
@@ -7551,8 +8798,8 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "用户ID",
-                        "name": "user_id",
+                        "description": "成员租户ID",
+                        "name": "tenant_id",
                         "in": "path",
                         "required": true
                     },
@@ -7588,7 +8835,7 @@ const docTemplate = `{
                         "Bearer": []
                     }
                 ],
-                "description": "从组织中移除成员（需要管理员权限）",
+                "description": "从组织中移除成员租户（需要管理员权限）",
                 "tags": [
                     "组织管理"
                 ],
@@ -7603,8 +8850,8 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "用户ID",
-                        "name": "user_id",
+                        "description": "成员租户ID",
+                        "name": "tenant_id",
                         "in": "path",
                         "required": true
                     }
@@ -7679,21 +8926,21 @@ const docTemplate = `{
                 }
             }
         },
-        "/organizations/{id}/search-users": {
+        "/organizations/{id}/search-tenants": {
             "get": {
                 "security": [
                     {
                         "Bearer": []
                     }
                 ],
-                "description": "搜索用户（排除已有成员）用于邀请加入组织",
+                "description": "搜索租户（排除已加入的租户）用于邀请加入组织；按租户去重，附带代表用户",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "组织管理"
                 ],
-                "summary": "搜索可邀请的用户",
+                "summary": "搜索可邀请的租户",
                 "parameters": [
                     {
                         "type": "string",
@@ -7704,7 +8951,7 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "搜索关键词（用户名或邮箱）",
+                        "description": "搜索关键词（租户名、用户名或邮箱）",
                         "name": "q",
                         "in": "query",
                         "required": true
@@ -7732,6 +8979,12 @@ const docTemplate = `{
                         }
                     }
                 }
+            }
+        },
+        "/organizations/{id}/search-users": {
+            "get": {
+                "deprecated": true,
+                "responses": {}
             }
         },
         "/organizations/{id}/shared-agents": {
@@ -7848,7 +9101,7 @@ const docTemplate = `{
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "获取当前租户的会话列表，支持分页",
+                "description": "获取当前租户的会话列表，支持分页、关键字搜索、按来源/Agent 筛选",
                 "consumes": [
                     "application/json"
                 ],
@@ -7870,6 +9123,24 @@ const docTemplate = `{
                         "type": "integer",
                         "description": "每页数量",
                         "name": "page_size",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "标题模糊搜索",
+                        "name": "keyword",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "来源过滤：web / feishu / wechat / slack / ...",
+                        "name": "source",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "按 Agent 过滤（仅对 IM 会话生效）",
+                        "name": "agent_id",
                         "in": "query"
                     }
                 ],
@@ -7979,6 +9250,60 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "请求参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
+                        }
+                    }
+                }
+            }
+        },
+        "/sessions/continue-stream/{session_id}": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "继续获取正在进行的流式响应",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "text/event-stream"
+                ],
+                "tags": [
+                    "问答"
+                ],
+                "summary": "继续流式响应",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "会话ID",
+                        "name": "session_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "消息ID",
+                        "name": "message_id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "流式响应",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "会话或消息不存在",
                         "schema": {
                             "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
                         }
@@ -8234,6 +9559,50 @@ const docTemplate = `{
                 }
             }
         },
+        "/sessions/{id}/pin": {
+            "delete": {
+                "security": [
+                    {
+                        "Bearer": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "取消指定会话的置顶",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "会话"
+                ],
+                "summary": "取消置顶会话",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "会话ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "取消置顶成功",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "会话不存在",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
+                        }
+                    }
+                }
+            }
+        },
         "/sessions/{session_id}/agent-qa": {
             "post": {
                 "security": [
@@ -8290,60 +9659,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/sessions/{session_id}/continue": {
-            "get": {
-                "security": [
-                    {
-                        "Bearer": []
-                    },
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "description": "继续获取正在进行的流式响应",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "text/event-stream"
-                ],
-                "tags": [
-                    "问答"
-                ],
-                "summary": "继续流式响应",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "会话ID",
-                        "name": "session_id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "消息ID",
-                        "name": "message_id",
-                        "in": "query",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "流式响应",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "404": {
-                        "description": "会话或消息不存在",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
-                        }
-                    }
-                }
-            }
-        },
         "/sessions/{session_id}/knowledge-qa": {
             "post": {
                 "security": [
@@ -8393,6 +9708,50 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "请求参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
+                        }
+                    }
+                }
+            }
+        },
+        "/sessions/{session_id}/pin": {
+            "post": {
+                "security": [
+                    {
+                        "Bearer": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "将指定会话置顶（用户维度）",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "会话"
+                ],
+                "summary": "置顶会话",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "会话ID",
+                        "name": "session_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "置顶成功",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "会话不存在",
                         "schema": {
                             "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
                         }
@@ -8505,6 +9864,41 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "请求参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
+                        }
+                    }
+                }
+            }
+        },
+        "/shared-agents": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "返回所有共享给当前用户所在组织的智能体",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "组织"
+                ],
+                "summary": "获取我可访问的共享智能体",
+                "responses": {
+                    "200": {
+                        "description": "智能体列表 + total",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "服务器错误",
                         "schema": {
                             "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
                         }
@@ -8773,7 +10167,7 @@ const docTemplate = `{
                         "Bearer": []
                     }
                 ],
-                "description": "创建新的租户",
+                "description": "创建新的租户。任意已登录用户均可调用以建立自己的新工作区，\n调用方会被自动设为该租户的 Owner。跨租户超管仍可像以前一样\n通过本接口创建任意租户。",
                 "consumes": [
                     "application/json"
                 ],
@@ -8791,7 +10185,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.Tenant"
+                            "$ref": "#/definitions/internal_handler.createTenantRequest"
                         }
                     }
                 ],
@@ -8840,82 +10234,6 @@ const docTemplate = `{
                     },
                     "403": {
                         "description": "权限不足",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
-                        }
-                    }
-                }
-            }
-        },
-        "/tenants/kv/agent-config": {
-            "get": {
-                "security": [
-                    {
-                        "Bearer": []
-                    },
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "description": "获取租户的全局Agent配置（默认应用于所有会话）",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "租户管理"
-                ],
-                "summary": "获取租户Agent配置",
-                "responses": {
-                    "200": {
-                        "description": "Agent配置",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "400": {
-                        "description": "请求参数错误",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
-                        }
-                    }
-                }
-            }
-        },
-        "/tenants/kv/conversation-config": {
-            "get": {
-                "security": [
-                    {
-                        "Bearer": []
-                    },
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "description": "获取租户的全局对话配置（默认应用于普通模式会话）",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "租户管理"
-                ],
-                "summary": "获取租户对话配置",
-                "responses": {
-                    "200": {
-                        "description": "对话配置",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "400": {
-                        "description": "请求参数错误",
                         "schema": {
                             "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
                         }
@@ -9009,7 +10327,7 @@ const docTemplate = `{
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "获取租户级别的KV配置（支持agent-config、web-search-config、conversation-config）",
+                "description": "获取租户级别的KV配置（支持web-search-config、prompt-templates、parser-engine-config、storage-engine-config、chat-history-config、retrieval-config）",
                 "consumes": [
                     "application/json"
                 ],
@@ -9054,7 +10372,7 @@ const docTemplate = `{
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "更新租户级别的KV配置（支持agent-config、web-search-config、conversation-config）",
+                "description": "更新租户级别的KV配置（支持web-search-config、parser-engine-config、storage-engine-config、chat-history-config、retrieval-config）",
                 "consumes": [
                     "application/json"
                 ],
@@ -9307,6 +10625,585 @@ const docTemplate = `{
                         "description": "请求参数错误",
                         "schema": {
                             "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
+                        }
+                    }
+                }
+            }
+        },
+        "/tenants/{id}/api-key": {
+            "post": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "为指定租户生成一个新的 API Key，旧 Key 立即失效",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "租户管理"
+                ],
+                "summary": "重置租户 API Key",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "租户ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "新生成的 API Key",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "请求参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
+                        }
+                    },
+                    "403": {
+                        "description": "权限不足",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
+                        }
+                    }
+                }
+            }
+        },
+        "/tenants/{id}/audit-log": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "返回该租户最近的审计事件，按 id 倒序。游标分页：将上次响应的 next_cursor 作为下一次请求的 after_id。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "审计日志"
+                ],
+                "summary": "获取租户审计日志",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "租户ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "游标：返回 id 小于此值的记录（默认从最新开始）",
+                        "name": "after_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "页大小，1-100，默认 50",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "按 action 精确过滤（如 rbac.member_added / rbac.access_denied）",
+                        "name": "action",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "按 outcome 精确过滤（success / denied）",
+                        "name": "outcome",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "按 actor_user_id 精确过滤",
+                        "name": "actor",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.auditLogListResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
+                        }
+                    }
+                }
+            }
+        },
+        "/tenants/{id}/invitations": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "按 tenant 列出待接受 / 历史邀请。query include_terminal=true 时附带 accepted/declined/revoked/expired。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "租户邀请"
+                ],
+                "summary": "列出租户邀请",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "租户 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "是否包含终止态行（默认 false）",
+                        "name": "include_terminal",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 1,
+                        "description": "页码（从 1 起）",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "每页数量",
+                        "name": "page_size",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "Owner 通过邮箱邀请已注册用户加入当前租户；被邀请人需要在 /me/invitations 接受后才会成为成员。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "租户邀请"
+                ],
+                "summary": "发出租户邀请",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "租户 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "邀请请求",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.createInvitationRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/tenants/{id}/invitations/{inv_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "Owner 取消一条还在 pending 的邀请；已 accepted/declined/revoked/expired 的行不可再撤销。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "租户邀请"
+                ],
+                "summary": "撤销待接受邀请",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "租户 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "邀请 ID",
+                        "name": "inv_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/tenants/{id}/leave": {
+            "post": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "调用方主动退出当前租户。等价于以自己的 user_id 调 RemoveMember，",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "租户成员"
+                ],
+                "summary": "退出当前租户",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "租户 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/tenants/{id}/members": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "分页返回当前租户内 active 成员（含每位成员的角色、邮箱、头像）；支持 q 按邮箱/用户名筛选",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "租户成员"
+                ],
+                "summary": "列出租户成员",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "租户 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "按邮箱/用户名模糊筛选",
+                        "name": "q",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 1,
+                        "description": "页码（从 1 起）",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "每页数量（最大 100）",
+                        "name": "page_size",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "租户成员"
+                ],
+                "summary": "直接添加租户成员（直加路径）",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "租户 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "邀请请求",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.addMemberRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/tenants/{id}/members/{user_id}": {
+            "put": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "Owner 修改某位成员在当前租户内的角色；不能将最后一位 Owner 降级",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "租户成员"
+                ],
+                "summary": "修改租户成员角色",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "租户 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "用户 ID",
+                        "name": "user_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "目标角色",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.updateMemberRoleRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "Owner 将某位成员从当前租户中移除（软删除 tenant_members 行）；不能移除最后一位 Owner",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "租户成员"
+                ],
+                "summary": "移除租户成员",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "租户 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "用户 ID",
+                        "name": "user_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/user/favorites": {
+            "get": {
+                "description": "Lists this user's starred resources in the current tenant for a given type",
+                "tags": [
+                    "User"
+                ],
+                "summary": "List my favorites",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Resource type (kb | agent)",
+                        "name": "type",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            },
+            "post": {
+                "tags": [
+                    "User"
+                ],
+                "summary": "Star a resource",
+                "parameters": [
+                    {
+                        "description": "Type + id",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.AddFavoriteRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/user/favorites/{type}/{id}": {
+            "delete": {
+                "tags": [
+                    "User"
+                ],
+                "summary": "Unstar a resource",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Resource type",
+                        "name": "type",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Resource id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
                         }
                     }
                 }
@@ -9714,6 +11611,452 @@ const docTemplate = `{
                     }
                 }
             }
+        },
+        "/web-search-providers/test": {
+            "post": {
+                "security": [
+                    {
+                        "Bearer": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "使用前端表单中尚未保存的凭证测试连通性，用于\"测试连接\"按钮",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "网络搜索"
+                ],
+                "summary": "使用原始凭证测试 Provider（不落库）",
+                "parameters": [
+                    {
+                        "description": "{provider, parameters}",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.TestProviderRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "测试结果",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "请求参数错误",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/web-search-providers/types": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "返回 UI 表单需要的 provider 类型及参数定义",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "网络搜索"
+                ],
+                "summary": "获取网络搜索 Provider 类型元数据",
+                "responses": {
+                    "200": {
+                        "description": "provider 类型列表",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/web-search-providers/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "根据 ID 获取指定 provider 配置",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "网络搜索"
+                ],
+                "summary": "获取网络搜索 Provider 详情",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Provider ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Provider 详情",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.WebSearchProviderEntity"
+                        }
+                    },
+                    "404": {
+                        "description": "Provider 不存在",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "Bearer": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "更新指定 provider 的名称/描述/参数/是否默认",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "网络搜索"
+                ],
+                "summary": "更新网络搜索 Provider",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Provider ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "更新字段",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.UpdateProviderRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "更新后的 Provider",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.WebSearchProviderEntity"
+                        }
+                    },
+                    "400": {
+                        "description": "请求参数错误",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "Provider 不存在",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "Bearer": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "删除指定 provider 配置",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "网络搜索"
+                ],
+                "summary": "删除网络搜索 Provider",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Provider ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "success: true",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "Provider 不存在",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/web-search-providers/{id}/test": {
+            "post": {
+                "security": [
+                    {
+                        "Bearer": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "使用数据库中已保存的凭证测试连通性",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "网络搜索"
+                ],
+                "summary": "测试已保存的 Provider",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Provider ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "测试结果",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "Provider 不存在",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/web-search/providers": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "返回所有已注册的网络搜索 provider（含元数据）",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "网络搜索"
+                ],
+                "summary": "获取可用网络搜索 Provider 列表",
+                "responses": {
+                    "200": {
+                        "description": "provider 列表",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/wechat/qrcode": {
+            "post": {
+                "security": [
+                    {
+                        "Bearer": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "申请一个用于扫码登录绑定的微信二维码（无请求体）",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "IM 渠道"
+                ],
+                "summary": "获取微信扫码登录二维码",
+                "responses": {
+                    "200": {
+                        "description": "二维码信息（qrcode_url + qrcode 标识）",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "二维码生成失败",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/wechat/qrcode/status": {
+            "post": {
+                "security": [
+                    {
+                        "Bearer": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "查询指定二维码是否已被扫描/确认/过期；confirmed 时返回凭证",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "IM 渠道"
+                ],
+                "summary": "轮询微信二维码状态",
+                "parameters": [
+                    {
+                        "description": "{qrcode: string}",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "扫码状态",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "请求参数错误",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "服务器错误",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/weknoracloud/credentials": {
+            "post": {
+                "security": [
+                    {
+                        "Bearer": []
+                    },
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "保存 APPID/APPSECRET 到当前租户配置（不自动创建模型）",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "WeKnoraCloud"
+                ],
+                "summary": "保存 WeKnoraCloud 凭证",
+                "parameters": [
+                    {
+                        "description": "{app_id, app_secret}",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "success: true",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "请求参数错误",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
@@ -9863,7 +12206,9 @@ const docTemplate = `{
                 2100,
                 2101,
                 2102,
-                2103
+                2103,
+                2200,
+                2201
             ],
             "x-enum-varnames": [
                 "ErrBadRequest",
@@ -9885,8 +12230,106 @@ const docTemplate = `{
                 "ErrAgentMissingThinkingModel",
                 "ErrAgentMissingAllowedTools",
                 "ErrAgentInvalidMaxIterations",
-                "ErrAgentInvalidTemperature"
+                "ErrAgentInvalidTemperature",
+                "ErrVectorStoreBindingInvalid",
+                "ErrVectorStoreUnavailable"
             ]
+        },
+        "github_com_Tencent_WeKnora_internal_infrastructure_chunker.DocProfile": {
+            "type": "object",
+            "properties": {
+                "all_caps_short_line_count": {
+                    "type": "integer"
+                },
+                "avg_line_len": {
+                    "type": "number"
+                },
+                "blank_paragraph_breaks": {
+                    "type": "integer"
+                },
+                "chinese_chapter_count": {
+                    "type": "integer"
+                },
+                "code_ratio": {
+                    "type": "number"
+                },
+                "detected_langs": {
+                    "description": "Detected language hints (best-effort)",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "english_chapter_count": {
+                    "type": "integer"
+                },
+                "form_feed_count": {
+                    "type": "integer"
+                },
+                "german_chapter_count": {
+                    "type": "integer"
+                },
+                "has_code": {
+                    "type": "boolean"
+                },
+                "has_tables": {
+                    "description": "Content characteristics",
+                    "type": "boolean"
+                },
+                "md_heading_counts": {
+                    "description": "Markdown structure",
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "integer"
+                    }
+                },
+                "md_heading_total": {
+                    "type": "integer"
+                },
+                "numbered_section_count": {
+                    "description": "Heuristic indicators",
+                    "type": "integer"
+                },
+                "repeated_footer_count": {
+                    "type": "integer"
+                },
+                "std_line_len": {
+                    "type": "number"
+                },
+                "total_chars": {
+                    "type": "integer"
+                },
+                "total_lines": {
+                    "type": "integer"
+                },
+                "visual_sep_count": {
+                    "type": "integer"
+                }
+            }
+        },
+        "github_com_Tencent_WeKnora_internal_infrastructure_chunker.StrategyTier": {
+            "type": "string",
+            "enum": [
+                "heading",
+                "heuristic",
+                "legacy"
+            ],
+            "x-enum-varnames": [
+                "TierHeading",
+                "TierHeuristic",
+                "TierLegacy"
+            ]
+        },
+        "github_com_Tencent_WeKnora_internal_infrastructure_chunker.TierRejection": {
+            "type": "object",
+            "properties": {
+                "reason": {
+                    "type": "string"
+                },
+                "tier": {
+                    "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_infrastructure_chunker.StrategyTier"
+                }
+            }
         },
         "github_com_Tencent_WeKnora_internal_types.ASRConfig": {
             "type": "object",
@@ -9903,139 +12346,16 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_Tencent_WeKnora_internal_types.AgentConfig": {
-            "type": "object",
-            "properties": {
-                "allowed_skills": {
-                    "description": "Skill names whitelist (empty = allow all)",
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "allowed_tools": {
-                    "description": "List of allowed tool names",
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "history_turns": {
-                    "description": "Number of history turns to keep in context",
-                    "type": "integer"
-                },
-                "knowledge_bases": {
-                    "description": "Accessible knowledge base IDs",
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "knowledge_ids": {
-                    "description": "Accessible knowledge IDs (individual documents)",
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "llm_call_timeout": {
-                    "description": "LLM call timeout in seconds (default: 120). Controls the maximum time for a single LLM call.",
-                    "type": "integer"
-                },
-                "max_context_tokens": {
-                    "description": "Maximum context window tokens for the agent (default: 200000).\nThe agent compresses older messages to stay within this limit,\npreserving tool_call/tool_result pairs.",
-                    "type": "integer"
-                },
-                "max_iterations": {
-                    "description": "Maximum number of ReAct iterations",
-                    "type": "integer"
-                },
-                "max_tool_output_chars": {
-                    "description": "Maximum character length for tool output (default: 16000).\nOutputs exceeding this limit are truncated with head + tail preservation.",
-                    "type": "integer"
-                },
-                "mcp_selection_mode": {
-                    "description": "MCP service selection",
-                    "type": "string"
-                },
-                "mcp_services": {
-                    "description": "Selected MCP service IDs (when mode is \"selected\")",
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "multi_turn_enabled": {
-                    "description": "Whether multi-turn conversation is enabled",
-                    "type": "boolean"
-                },
-                "parallel_tool_calls": {
-                    "description": "Whether to execute independent tool calls in parallel (default: false).\nWhen enabled and the LLM returns multiple tool calls, they run concurrently via errgroup.",
-                    "type": "boolean"
-                },
-                "retain_retrieval_history": {
-                    "description": "Whether to retain retrieval history (like wiki_read_page results) across turns (default: false)",
-                    "type": "boolean"
-                },
-                "retrieve_kb_only_when_mentioned": {
-                    "description": "Whether to retrieve knowledge base only when explicitly mentioned with @ (default: false)",
-                    "type": "boolean"
-                },
-                "skill_dirs": {
-                    "description": "Directories to search for skills",
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "skills_enabled": {
-                    "description": "Skills configuration (Progressive Disclosure pattern)",
-                    "type": "boolean"
-                },
-                "system_prompt": {
-                    "description": "Unified system prompt (uses web_search_status placeholder for dynamic behavior)",
-                    "type": "string"
-                },
-                "system_prompt_web_disabled": {
-                    "description": "Deprecated: Custom prompt when web search is disabled",
-                    "type": "string"
-                },
-                "system_prompt_web_enabled": {
-                    "description": "Deprecated: Use SystemPrompt instead. Kept for backward compatibility during migration.",
-                    "type": "string"
-                },
-                "temperature": {
-                    "description": "LLM temperature for agent",
-                    "type": "number"
-                },
-                "thinking": {
-                    "description": "Whether to enable thinking mode (for models that support extended thinking)",
-                    "type": "boolean"
-                },
-                "use_custom_system_prompt": {
-                    "description": "Whether to use custom system prompt instead of default",
-                    "type": "boolean"
-                },
-                "web_search_enabled": {
-                    "description": "Whether web search tool is enabled",
-                    "type": "boolean"
-                },
-                "web_search_max_results": {
-                    "description": "Maximum number of web search results (default: 5)",
-                    "type": "integer"
-                },
-                "web_search_provider_id": {
-                    "description": "WebSearchProviderEntity ID (resolved from agent config)",
-                    "type": "string"
-                }
-            }
-        },
         "github_com_Tencent_WeKnora_internal_types.AgentStep": {
             "type": "object",
             "properties": {
                 "iteration": {
                     "description": "Iteration number (0-indexed)",
                     "type": "integer"
+                },
+                "reasoning_content": {
+                    "description": "ReasoningContent stores the OpenAI-protocol reasoning_content emitted by the\nmodel in this round. Persisted on AgentStep so cross-turn replay can put it\nback on the assistant message — required by MiMo / DeepSeek V3.2+ thinking\nmode, ignored by providers that don't recognize the field.",
+                    "type": "string"
                 },
                 "thought": {
                     "description": "LLM's reasoning/thinking (Think phase)",
@@ -10063,6 +12383,91 @@ const docTemplate = `{
             "x-enum-varnames": [
                 "AnswerStrategyAll",
                 "AnswerStrategyRandom"
+            ]
+        },
+        "github_com_Tencent_WeKnora_internal_types.AuditAction": {
+            "type": "string",
+            "enum": [
+                "rbac.member_added",
+                "rbac.member_removed",
+                "rbac.member_role_changed",
+                "rbac.member_left",
+                "rbac.access_denied",
+                "rbac.invitation_sent",
+                "rbac.invitation_accepted",
+                "rbac.invitation_declined",
+                "rbac.invitation_revoked",
+                "rbac.invitation_expired"
+            ],
+            "x-enum-varnames": [
+                "AuditActionMemberAdded",
+                "AuditActionMemberRemoved",
+                "AuditActionMemberRoleChanged",
+                "AuditActionMemberLeft",
+                "AuditActionAccessDenied",
+                "AuditActionInvitationSent",
+                "AuditActionInvitationAccepted",
+                "AuditActionInvitationDeclined",
+                "AuditActionInvitationRevoked",
+                "AuditActionInvitationExpired"
+            ]
+        },
+        "github_com_Tencent_WeKnora_internal_types.AuditLog": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.AuditAction"
+                },
+                "actor_role": {
+                    "type": "string"
+                },
+                "actor_user_id": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "details": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "outcome": {
+                    "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.AuditOutcome"
+                },
+                "request_method": {
+                    "type": "string"
+                },
+                "request_path": {
+                    "type": "string"
+                },
+                "target_id": {
+                    "type": "string"
+                },
+                "target_type": {
+                    "type": "string"
+                },
+                "target_user_id": {
+                    "type": "string"
+                },
+                "tenant_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "github_com_Tencent_WeKnora_internal_types.AuditOutcome": {
+            "type": "string",
+            "enum": [
+                "success",
+                "denied"
+            ],
+            "x-enum-varnames": [
+                "AuditOutcomeSuccess",
+                "AuditOutcomeDenied"
             ]
         },
         "github_com_Tencent_WeKnora_internal_types.COSEngineConfig": {
@@ -10128,6 +12533,13 @@ const docTemplate = `{
                     "description": "EnableParentChild enables two-level parent-child chunking strategy.\nWhen enabled, large parent chunks provide context while small child chunks\nare used for vector matching. Retrieval matches on child but returns parent content.",
                     "type": "boolean"
                 },
+                "languages": {
+                    "description": "Languages hints the heuristic patterns. Empty = auto-detect from content.\nExamples: [\"de\"], [\"en\", \"zh\"].",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
                 "parent_chunk_size": {
                     "description": "ParentChunkSize is the size of parent chunks (default: 4096).\nOnly used when EnableParentChild is true.",
                     "type": "integer"
@@ -10145,6 +12557,14 @@ const docTemplate = `{
                     "items": {
                         "type": "string"
                     }
+                },
+                "strategy": {
+                    "description": "Strategy selects the adaptive chunking tier. Empty / \"legacy\" preserves\nthe historical recursive splitter; \"auto\" lets a profiler pick between\nheading-aware, heuristic and recursive tiers; \"heading\" / \"heuristic\" /\n\"recursive\" pin the tier explicitly.",
+                    "type": "string"
+                },
+                "token_limit": {
+                    "description": "TokenLimit caps chunk size in approximate tokens. 0 = use ChunkSize\nas a character count.",
+                    "type": "integer"
                 }
             }
         },
@@ -10159,6 +12579,10 @@ const docTemplate = `{
                     "description": "AES-GCM encrypted",
                     "type": "string"
                 },
+                "database": {
+                    "description": "Tencent VectorDB and Doris database name.",
+                    "type": "string"
+                },
                 "grpc_address": {
                     "description": "Weaviate",
                     "type": "string"
@@ -10166,6 +12590,10 @@ const docTemplate = `{
                 "host": {
                     "description": "Qdrant",
                     "type": "string"
+                },
+                "http_port": {
+                    "description": "Doris: HTTP port for Stream Load API (FE default 8030).\nAddr is reused for the MySQL protocol \"host:9030\"; HTTPPort + the host of Addr\ntogether form the FE HTTP endpoint used by Stream Load.",
+                    "type": "integer"
                 },
                 "password": {
                     "description": "AES-GCM encrypted",
@@ -10226,76 +12654,6 @@ const docTemplate = `{
                 "summarize_threshold": {
                     "description": "Summarize threshold: number of messages before summarization",
                     "type": "integer"
-                }
-            }
-        },
-        "github_com_Tencent_WeKnora_internal_types.ConversationConfig": {
-            "type": "object",
-            "properties": {
-                "context_template": {
-                    "description": "ContextTemplate is the prompt template for summarizing retrieval results",
-                    "type": "string"
-                },
-                "embedding_top_k": {
-                    "type": "integer"
-                },
-                "enable_query_expansion": {
-                    "type": "boolean"
-                },
-                "enable_rewrite": {
-                    "type": "boolean"
-                },
-                "fallback_prompt": {
-                    "type": "string"
-                },
-                "fallback_response": {
-                    "type": "string"
-                },
-                "fallback_strategy": {
-                    "description": "Fallback strategy",
-                    "type": "string"
-                },
-                "keyword_threshold": {
-                    "type": "number"
-                },
-                "max_completion_tokens": {
-                    "description": "MaxTokens is the maximum number of tokens to generate",
-                    "type": "integer"
-                },
-                "max_rounds": {
-                    "description": "Retrieval \u0026 strategy parameters",
-                    "type": "integer"
-                },
-                "prompt": {
-                    "description": "Prompt is the system prompt for normal mode",
-                    "type": "string"
-                },
-                "rerank_model_id": {
-                    "type": "string"
-                },
-                "rerank_threshold": {
-                    "type": "number"
-                },
-                "rerank_top_k": {
-                    "type": "integer"
-                },
-                "rewrite_prompt_system": {
-                    "description": "Rewrite prompts",
-                    "type": "string"
-                },
-                "rewrite_prompt_user": {
-                    "type": "string"
-                },
-                "summary_model_id": {
-                    "description": "Model configuration",
-                    "type": "string"
-                },
-                "temperature": {
-                    "description": "Temperature controls the randomness of the model output",
-                    "type": "number"
-                },
-                "vector_threshold": {
-                    "type": "number"
                 }
             }
         },
@@ -10371,6 +12729,10 @@ const docTemplate = `{
                     "description": "ContextTemplateID references a template ID in prompt_templates/ YAML files.\nIf set and ContextTemplate is empty, the template content will be resolved at startup.",
                     "type": "string"
                 },
+                "data_analysis_enabled": {
+                    "description": "===== Data Analysis Settings =====\nWhether to run the legacy in-pipeline DuckDB SQL data-analysis stage when\nthe retrieved chunks include CSV/Excel files. This issues an extra LLM\ncall to generate a SQL query and is disabled by default because most\nquick-answer / RAG-style agents do not want the added latency.",
+                    "type": "boolean"
+                },
                 "embedding_top_k": {
                     "description": "===== Retrieval Strategy Settings (for both modes) =====\nEmbedding/Vector retrieval top K",
                     "type": "integer"
@@ -10412,7 +12774,7 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "image_storage_provider": {
-                    "description": "Storage provider for image uploads: \"local\", \"minio\", \"cos\", \"tos\"\nEmpty means use the global/tenant default provider.",
+                    "description": "Storage provider for image uploads: \"local\", \"minio\", \"cos\", \"tos\", \"s3\", \"oss\", \"ks3\".\nEmpty means use the global/tenant default provider.",
                     "type": "string"
                 },
                 "image_upload_enabled": {
@@ -10464,6 +12826,10 @@ const docTemplate = `{
                 "multi_turn_enabled": {
                     "description": "===== Multi-turn Conversation Settings =====\nWhether multi-turn conversation is enabled",
                     "type": "boolean"
+                },
+                "query_understand_model_id": {
+                    "description": "Dedicated chat model ID for the query-understanding (rewrite + intent) step.\nWhen empty, the main conversation ModelID is used as a fallback.",
+                    "type": "string"
                 },
                 "rerank_model_id": {
                     "description": "ReRank model ID for retrieval",
@@ -10944,6 +13310,10 @@ const docTemplate = `{
         "github_com_Tencent_WeKnora_internal_types.IndexConfig": {
             "type": "object",
             "properties": {
+                "buckets_num": {
+                    "description": "Doris: number of buckets per table (DISTRIBUTED BY HASH ... BUCKETS N)",
+                    "type": "integer"
+                },
                 "collection_name": {
                     "description": "Milvus",
                     "type": "string"
@@ -10974,6 +13344,10 @@ const docTemplate = `{
                 },
                 "replication_factor": {
                     "description": "Qdrant, Weaviate: number of replicas",
+                    "type": "integer"
+                },
+                "replication_num": {
+                    "description": "Doris: replication_num PROPERTIES",
                     "type": "integer"
                 },
                 "shard_number": {
@@ -11010,10 +13384,13 @@ const docTemplate = `{
         "github_com_Tencent_WeKnora_internal_types.InviteMemberRequest": {
             "type": "object",
             "required": [
-                "role",
-                "user_id"
+                "role"
             ],
             "properties": {
+                "representative_user_id": {
+                    "description": "RepresentativeUserID identifies the user attached to the OTM row for\ndisplay/audit. Optional: when unset, the handler picks a stable default\n(the user from the legacy UserID field, or the tenant's owner).",
+                    "type": "string"
+                },
                 "role": {
                     "description": "Role to assign: admin/editor/viewer",
                     "allOf": [
@@ -11022,8 +13399,12 @@ const docTemplate = `{
                         }
                     ]
                 },
+                "tenant_id": {
+                    "description": "TenantID is the tenant to enrol as an org member. Preferred field.",
+                    "type": "integer"
+                },
                 "user_id": {
-                    "description": "User ID to invite",
+                    "description": "UserID is retained for backward compatibility. When set without\nTenantID, the handler resolves the user's TenantID and uses this\nuser as the representative.",
                     "type": "string"
                 }
             }
@@ -11062,6 +13443,44 @@ const docTemplate = `{
                     "type": "string",
                     "maxLength": 32,
                     "minLength": 8
+                }
+            }
+        },
+        "github_com_Tencent_WeKnora_internal_types.KBCloneTaskStatus": {
+            "type": "string",
+            "enum": [
+                "pending",
+                "processing",
+                "completed",
+                "failed"
+            ],
+            "x-enum-varnames": [
+                "KBCloneStatusPending",
+                "KBCloneStatusProcessing",
+                "KBCloneStatusCompleted",
+                "KBCloneStatusFailed"
+            ]
+        },
+        "github_com_Tencent_WeKnora_internal_types.KS3EngineConfig": {
+            "type": "object",
+            "properties": {
+                "access_key": {
+                    "type": "string"
+                },
+                "bucket_name": {
+                    "type": "string"
+                },
+                "endpoint": {
+                    "type": "string"
+                },
+                "path_prefix": {
+                    "type": "string"
+                },
+                "region": {
+                    "type": "string"
+                },
+                "secret_key": {
+                    "type": "string"
                 }
             }
         },
@@ -11215,6 +13634,14 @@ const docTemplate = `{
                     "description": "Creation time of the knowledge base",
                     "type": "string"
                 },
+                "creator_id": {
+                    "description": "CreatorID records the user ID of whoever originally created the KB.\nUsed by the tenant-level RBAC middleware to let Contributors edit\ntheir own KBs without granting them access to everyone else's.\nNullable for backward compatibility with rows created before the\nRBAC migration backfilled the column to the tenant Owner.",
+                    "type": "string"
+                },
+                "creator_name": {
+                    "description": "CreatorName 是 CreatorID 对应用户的展示名（username / email 等），\n仅在列表场景由 handler 批量回填，不落库；为空表示创建者无法解析（用户已删除、\nCreatorID 为空的老数据等）。前端用它在卡片来源徽章上做 mine vs tenant 的二分。",
+                    "type": "string"
+                },
                 "deleted_at": {
                     "description": "Deletion time of the knowledge base",
                     "allOf": [
@@ -11268,7 +13695,7 @@ const docTemplate = `{
                     ]
                 },
                 "is_pinned": {
-                    "description": "Whether this knowledge base is pinned to the top of the list",
+                    "description": "IsPinned and PinnedAt are computed per-caller from user_kb_pins\n(see migration 000050). They used to be stored on the row itself,\nwhich made pinning a tenant-wide ordering decision gated behind\nthe kb-edit RBAC guard. The columns are still present in legacy\nschemas for rollback safety but are no longer read or written by\nthe application — both fields are tagged ` + "`" + `gorm:\"-\"` + "`" + ` so GORM\nignores them on every CRUD call and the list handler stamps them\nafter enriching with the caller's pin set.",
                     "type": "boolean"
                 },
                 "is_processing": {
@@ -11288,7 +13715,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "pinned_at": {
-                    "description": "Time when the knowledge base was pinned (nil if not pinned)",
+                    "description": "PinnedAt records when the current caller pinned this knowledge\nbase; nil when they have not.",
                     "type": "string"
                 },
                 "processing_count": {
@@ -11462,6 +13889,55 @@ const docTemplate = `{
                 }
             }
         },
+        "github_com_Tencent_WeKnora_internal_types.KnowledgeMoveProgress": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "description": "任务创建时间",
+                    "type": "integer"
+                },
+                "error": {
+                    "description": "错误信息",
+                    "type": "string"
+                },
+                "failed": {
+                    "description": "失败数",
+                    "type": "integer"
+                },
+                "message": {
+                    "description": "状态消息",
+                    "type": "string"
+                },
+                "processed": {
+                    "description": "已处理数",
+                    "type": "integer"
+                },
+                "progress": {
+                    "description": "0-100",
+                    "type": "integer"
+                },
+                "source_kb_id": {
+                    "type": "string"
+                },
+                "status": {
+                    "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.KBCloneTaskStatus"
+                },
+                "target_kb_id": {
+                    "type": "string"
+                },
+                "task_id": {
+                    "type": "string"
+                },
+                "total": {
+                    "description": "总知识数",
+                    "type": "integer"
+                },
+                "updated_at": {
+                    "description": "最后更新时间",
+                    "type": "integer"
+                }
+            }
+        },
         "github_com_Tencent_WeKnora_internal_types.ListMembersResponse": {
             "type": "object",
             "properties": {
@@ -11539,6 +14015,21 @@ const docTemplate = `{
         "github_com_Tencent_WeKnora_internal_types.LoginResponse": {
             "type": "object",
             "properties": {
+                "active_tenant": {
+                    "description": "ActiveTenant is the tenant whose ID is encoded in the issued JWT;\nfuture requests are scoped to it until the client calls /auth/switch-tenant.\nDefaults to the user's home tenant on a fresh login.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.Tenant"
+                        }
+                    ]
+                },
+                "memberships": {
+                    "description": "Memberships lists every tenant the user can authenticate into,\nalong with their role in each. Always populated (length 1 for users\nwho only belong to their home tenant) so frontends can render a\ntenant switcher without a follow-up request. Serialised without\nomitempty so the field is always present as a JSON array (possibly\nempty) — the \"always populated\" contract relies on the server side\nguaranteeing a non-nil slice.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.Membership"
+                    }
+                },
                 "message": {
                     "type": "string"
                 },
@@ -11547,9 +14038,6 @@ const docTemplate = `{
                 },
                 "success": {
                     "type": "boolean"
-                },
-                "tenant": {
-                    "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.Tenant"
                 },
                 "token": {
                     "type": "string"
@@ -11774,6 +14262,20 @@ const docTemplate = `{
                 "MatchTypeDirectLoad",
                 "MatchTypeDataAnalysis"
             ]
+        },
+        "github_com_Tencent_WeKnora_internal_types.Membership": {
+            "type": "object",
+            "properties": {
+                "role": {
+                    "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.TenantRole"
+                },
+                "tenant_id": {
+                    "type": "integer"
+                },
+                "tenant_name": {
+                    "type": "string"
+                }
+            }
         },
         "github_com_Tencent_WeKnora_internal_types.MentionedItem": {
             "type": "object",
@@ -12122,6 +14624,32 @@ const docTemplate = `{
                 "ModelTypeASR"
             ]
         },
+        "github_com_Tencent_WeKnora_internal_types.OBSEngineConfig": {
+            "type": "object",
+            "properties": {
+                "access_key": {
+                    "type": "string"
+                },
+                "bucket_name": {
+                    "type": "string"
+                },
+                "endpoint": {
+                    "type": "string"
+                },
+                "path_prefix": {
+                    "type": "string"
+                },
+                "region": {
+                    "type": "string"
+                },
+                "secret_key": {
+                    "type": "string"
+                },
+                "use_ssl": {
+                    "type": "boolean"
+                }
+            }
+        },
         "github_com_Tencent_WeKnora_internal_types.OIDCAuthURLResponse": {
             "type": "object",
             "properties": {
@@ -12213,11 +14741,17 @@ const docTemplate = `{
                 "joined_at": {
                     "type": "string"
                 },
+                "representative_user_id": {
+                    "type": "string"
+                },
                 "role": {
                     "type": "string"
                 },
                 "tenant_id": {
                     "type": "integer"
+                },
+                "tenant_name": {
+                    "type": "string"
                 },
                 "user_id": {
                     "type": "string"
@@ -12277,6 +14811,10 @@ const docTemplate = `{
                 },
                 "owner_id": {
                     "type": "string"
+                },
+                "owner_tenant_id": {
+                    "description": "OwnerTenantID is the persisted owner tenant of the organization\n(Plan 3, migration 000046). Frontend uses this to identify the\n\"owner row\" in the tenant-keyed members list — comparing\nmember.tenant_id against owner_tenant_id is the post-Plan-3\nequivalent of the old member.user_id == owner_id check.",
+                    "type": "integer"
                 },
                 "pending_join_request_count": {
                     "description": "待审批加入申请数（仅管理员可见）",
@@ -12338,6 +14876,10 @@ const docTemplate = `{
                 },
                 "mineru_model": {
                     "description": "MinerU 自建解析参数",
+                    "type": "string"
+                },
+                "mineru_vlm_server_url": {
+                    "description": "vLLM 服务器地址 (vlm-http-client / hybrid-http-client)",
                     "type": "string"
                 }
             }
@@ -12520,6 +15062,18 @@ const docTemplate = `{
                     "description": "RerankTopK is the maximum number of results after reranking (default: 10)",
                     "type": "integer"
                 },
+                "rrf_k": {
+                    "description": "RRFK is the smoothing constant of Reciprocal Rank Fusion. Larger values\nflatten the curve, reducing the bias towards top-1 results.\nDefault: 60. Sensible range: 30..100 depending on corpus size.",
+                    "type": "integer"
+                },
+                "rrf_keyword_weight": {
+                    "description": "RRFKeywordWeight is the keyword counterpart. Default: 0.3.",
+                    "type": "number"
+                },
+                "rrf_vector_weight": {
+                    "description": "RRFVectorWeight is the weight applied to the vector retriever inside RRF.\nRRFVectorWeight + RRFKeywordWeight should usually sum to 1.0 but the math\nworks for any positive weights. Default: 0.7.",
+                    "type": "number"
+                },
                 "vector_threshold": {
                     "description": "VectorThreshold is the minimum vector similarity score (0-1, default: 0.15)",
                     "type": "number"
@@ -12557,7 +15111,9 @@ const docTemplate = `{
                 "qdrant",
                 "milvus",
                 "weaviate",
-                "sqlite"
+                "doris",
+                "sqlite",
+                "tencent_vectordb"
             ],
             "x-enum-varnames": [
                 "PostgresRetrieverEngineType",
@@ -12567,7 +15123,9 @@ const docTemplate = `{
                 "QdrantRetrieverEngineType",
                 "MilvusRetrieverEngineType",
                 "WeaviateRetrieverEngineType",
-                "SQLiteRetrieverEngineType"
+                "DorisRetrieverEngineType",
+                "SQLiteRetrieverEngineType",
+                "TencentVectorDBRetrieverEngineType"
             ]
         },
         "github_com_Tencent_WeKnora_internal_types.RetrieverEngines": {
@@ -12636,6 +15194,9 @@ const docTemplate = `{
                 "endpoint": {
                     "type": "string"
                 },
+                "force_path_style": {
+                    "type": "boolean"
+                },
                 "path_prefix": {
                     "type": "string"
                 },
@@ -12644,6 +15205,9 @@ const docTemplate = `{
                 },
                 "secret_key": {
                     "type": "string"
+                },
+                "use_ssl": {
+                    "type": "boolean"
                 }
             }
         },
@@ -12826,6 +15390,22 @@ const docTemplate = `{
                     "description": "ID",
                     "type": "string"
                 },
+                "is_pinned": {
+                    "description": "IsPinned indicates whether the session is pinned in the list.",
+                    "type": "boolean"
+                },
+                "last_request_state": {
+                    "description": "LastRequestState records the input-bar state used the last time this\nsession sent a question (agent, model, KB scope, web search, MCPs).\nPersisted on every successful POST to /knowledge-chat or /agent-chat so\nthat reopening the session can restore the original request context to\nthe chat UI. Stored in the legacy sessions.agent_config JSONB column to\navoid a new migration; the shape used today is ` + "`" + `SessionLastRequestState` + "`" + `.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.SessionLastRequestState"
+                        }
+                    ]
+                },
+                "pinned_at": {
+                    "description": "PinnedAt records when the session was pinned; nil when not pinned.",
+                    "type": "string"
+                },
                 "tenant_id": {
                     "description": "Tenant ID",
                     "type": "integer"
@@ -12836,6 +15416,39 @@ const docTemplate = `{
                 },
                 "updated_at": {
                     "type": "string"
+                },
+                "user_id": {
+                    "description": "UserID is the owner of the session. Empty for legacy rows (visible at\ntenant level) and for IM-created sessions that do not map to a WeKnora user.",
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_Tencent_WeKnora_internal_types.SessionLastRequestState": {
+            "type": "object",
+            "properties": {
+                "agent_enabled": {
+                    "type": "boolean"
+                },
+                "agent_id": {
+                    "type": "string"
+                },
+                "knowledge_base_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "knowledge_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "model_id": {
+                    "type": "string"
+                },
+                "web_search_enabled": {
+                    "type": "boolean"
                 }
             }
         },
@@ -12858,25 +15471,44 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "app_id": {
+                    "description": "App ID (COS specific)",
                     "type": "string"
                 },
                 "bucket_name": {
+                    "description": "Bucket Name",
                     "type": "string"
                 },
+                "endpoint": {
+                    "description": "Endpoint (S3 specific) - e.g., s3.amazonaws.com, oss-cn-hangzhou.aliyuncs.com",
+                    "type": "string"
+                },
+                "force_path_style": {
+                    "description": "ForcePathStyle (S3 specific) - whether to use path-style URLs",
+                    "type": "boolean"
+                },
                 "path_prefix": {
+                    "description": "Path Prefix",
                     "type": "string"
                 },
                 "provider": {
+                    "description": "Provider: \"cos\", \"minio\", \"s3\"",
                     "type": "string"
                 },
                 "region": {
+                    "description": "Region",
                     "type": "string"
                 },
                 "secret_id": {
+                    "description": "Secret ID (COS) / Access Key ID (S3, MinIO)",
                     "type": "string"
                 },
                 "secret_key": {
+                    "description": "Secret Key (COS) / Secret Access Key (S3, MinIO)",
                     "type": "string"
+                },
+                "use_ssl": {
+                    "description": "UseSSL (S3 specific) - whether to use HTTPS",
+                    "type": "boolean"
                 }
             }
         },
@@ -12887,14 +15519,20 @@ const docTemplate = `{
                     "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.COSEngineConfig"
                 },
                 "default_provider": {
-                    "description": "\"local\", \"minio\", \"cos\", \"tos\", \"s3\", \"oss\"",
+                    "description": "\"local\", \"minio\", \"cos\", \"tos\", \"s3\", \"oss\", \"ks3\", \"obs\"",
                     "type": "string"
+                },
+                "ks3": {
+                    "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.KS3EngineConfig"
                 },
                 "local": {
                     "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.LocalEngineConfig"
                 },
                 "minio": {
                     "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.MinIOEngineConfig"
+                },
+                "obs": {
+                    "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.OBSEngineConfig"
                 },
                 "oss": {
                     "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.OSSEngineConfig"
@@ -12911,7 +15549,7 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "provider": {
-                    "description": "\"local\", \"minio\", \"cos\", \"tos\", \"s3\", \"oss\"",
+                    "description": "\"local\", \"minio\", \"cos\", \"tos\", \"s3\", \"oss\", \"ks3\", \"obs\"",
                     "type": "string"
                 }
             }
@@ -13039,14 +15677,6 @@ const docTemplate = `{
         "github_com_Tencent_WeKnora_internal_types.Tenant": {
             "type": "object",
             "properties": {
-                "agent_config": {
-                    "description": "Deprecated: AgentConfig is deprecated, use CustomAgent (builtin-smart-reasoning) config instead.\nThis field is kept for backward compatibility and will be removed in future versions.",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.AgentConfig"
-                        }
-                    ]
-                },
                 "api_key": {
                     "description": "API key",
                     "type": "string"
@@ -13068,14 +15698,6 @@ const docTemplate = `{
                     "allOf": [
                         {
                             "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.ContextConfig"
-                        }
-                    ]
-                },
-                "conversation_config": {
-                    "description": "Deprecated: ConversationConfig is deprecated, use CustomAgent (builtin-quick-answer) config instead.\nThis field is kept for backward compatibility and will be removed in future versions.",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.ConversationConfig"
                         }
                     ]
                 },
@@ -13168,6 +15790,21 @@ const docTemplate = `{
                     ]
                 }
             }
+        },
+        "github_com_Tencent_WeKnora_internal_types.TenantRole": {
+            "type": "string",
+            "enum": [
+                "owner",
+                "admin",
+                "contributor",
+                "viewer"
+            ],
+            "x-enum-varnames": [
+                "TenantRoleOwner",
+                "TenantRoleAdmin",
+                "TenantRoleContributor",
+                "TenantRoleViewer"
+            ]
         },
         "github_com_Tencent_WeKnora_internal_types.ToolCall": {
             "type": "object",
@@ -13323,6 +15960,14 @@ const docTemplate = `{
                     "description": "Whether the user is active",
                     "type": "boolean"
                 },
+                "preferences": {
+                    "description": "Per-user UI/feature preferences (memory toggle, future knobs).\nStored as JSON (jsonb on Postgres, TEXT on SQLite) via the\ndriver.Valuer / sql.Scanner methods on UserPreferences.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.UserPreferences"
+                        }
+                    ]
+                },
                 "tenant": {
                     "description": "Association relationship, not stored in the database",
                     "allOf": [
@@ -13342,6 +15987,19 @@ const docTemplate = `{
                 "username": {
                     "description": "Username of the user",
                     "type": "string"
+                }
+            }
+        },
+        "github_com_Tencent_WeKnora_internal_types.UserPreferences": {
+            "type": "object",
+            "properties": {
+                "enable_memory": {
+                    "description": "EnableMemory mirrors the \"开启记忆功能\" switch in General Settings.\nnil  = preference never set (treat as feature default = false)\n*false / *true = user explicitly set the toggle.",
+                    "type": "boolean"
+                },
+                "last_active_tenant_id": {
+                    "description": "LastActiveTenantID remembers the last tenant the user actively\nswitched into, so a fresh login (new device, cleared browser, new\nrefresh token) lands them back in that workspace instead of always\nbouncing to their home tenant. Login / RefreshToken validate that\nthe tenant still exists and the user still has an active membership\n(or CanAccessAllTenants) before honouring this preference; an\ninvalid pointer is best-effort cleared and the user falls back to\nhome.\n\nnil  = no preference (use user.TenantID, i.e. home)\n*0   = \"clear preference\" sentinel for the partial-update endpoint\n       (UpdateUserPreferences turns this into nil). Otherwise treat\n       a stored *0 the same as nil.\n*N   = preferred tenant id.",
+                    "type": "integer"
                 }
             }
         },
@@ -13435,6 +16093,106 @@ const docTemplate = `{
                 }
             }
         },
+        "github_com_Tencent_WeKnora_internal_types.WebSearchProviderEntity": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "description": "Timestamps",
+                    "type": "string"
+                },
+                "deleted_at": {
+                    "$ref": "#/definitions/gorm.DeletedAt"
+                },
+                "description": {
+                    "description": "Description",
+                    "type": "string"
+                },
+                "id": {
+                    "description": "Unique identifier (UUID, auto-generated)",
+                    "type": "string"
+                },
+                "is_default": {
+                    "description": "Whether this is the default provider for the tenant",
+                    "type": "boolean"
+                },
+                "name": {
+                    "description": "User-friendly name, e.g., \"Production Bing Search\"",
+                    "type": "string"
+                },
+                "parameters": {
+                    "description": "Provider-specific parameters (API key, engine ID, etc.) stored as encrypted JSON",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.WebSearchProviderParameters"
+                        }
+                    ]
+                },
+                "provider": {
+                    "description": "Provider type: bing, google, duckduckgo, tavily",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.WebSearchProviderType"
+                        }
+                    ]
+                },
+                "tenant_id": {
+                    "description": "Tenant ID for scoping",
+                    "type": "integer"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_Tencent_WeKnora_internal_types.WebSearchProviderParameters": {
+            "type": "object",
+            "properties": {
+                "api_key": {
+                    "description": "API key for the search provider (encrypted in DB)",
+                    "type": "string"
+                },
+                "base_url": {
+                    "description": "Base URL for self-hosted search engines (e.g. SearXNG instance URL).\nValidated with utils.ValidateURLForSSRF; private hosts must be added to SSRF_WHITELIST.",
+                    "type": "string"
+                },
+                "engine_id": {
+                    "description": "Google Custom Search Engine ID (only for Google provider)",
+                    "type": "string"
+                },
+                "extra_config": {
+                    "description": "Provider-specific extra configuration for future extensibility",
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "proxy_url": {
+                    "description": "Optional HTTP/HTTPS proxy URL for outbound search requests (e.g. http://host:port); validated with utils.ValidateURLForSSRF.\nDoes not replace the search API endpoint; only tunnels traffic to the official APIs.",
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_Tencent_WeKnora_internal_types.WebSearchProviderType": {
+            "type": "string",
+            "enum": [
+                "bing",
+                "google",
+                "duckduckgo",
+                "tavily",
+                "ollama",
+                "baidu",
+                "searxng"
+            ],
+            "x-enum-varnames": [
+                "WebSearchProviderTypeBing",
+                "WebSearchProviderTypeGoogle",
+                "WebSearchProviderTypeDuckDuckGo",
+                "WebSearchProviderTypeTavily",
+                "WebSearchProviderTypeOllama",
+                "WebSearchProviderTypeBaidu",
+                "WebSearchProviderTypeSearxng"
+            ]
+        },
         "github_com_Tencent_WeKnora_internal_types.WikiConfig": {
             "type": "object",
             "properties": {
@@ -13445,6 +16203,18 @@ const docTemplate = `{
                             "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.WikiExtractionGranularity"
                         }
                     ]
+                },
+                "ingest_batch_size": {
+                    "description": "IngestBatchSize controls how many pending ops a single batch\nprocesses before scheduling a follow-up. 0 falls back to the\nhard-coded default (5). Operators on large KBs (4w+ docs) can\nraise this to 10–20 to amortize the lock-acquire / index-rebuild\noverhead across more documents per round.",
+                    "type": "integer"
+                },
+                "ingest_map_parallel": {
+                    "description": "IngestMapParallel sets the errgroup limit for the Map phase\n(per-document extraction + summary + chunk citation). 0 falls\nback to 10. Bound by the LLM provider's concurrency limit and\nthe worker's outbound HTTP pool.",
+                    "type": "integer"
+                },
+                "ingest_reduce_parallel": {
+                    "description": "IngestReduceParallel sets the errgroup limit for the Reduce phase\n(per-slug page write). 0 falls back to 10. Bound by the same\nLLM concurrency / HTTP pool considerations as the Map phase,\nplus DB connection pool size.",
+                    "type": "integer"
                 },
                 "max_pages_per_ingest": {
                     "description": "MaxPagesPerIngest limits pages created/updated per ingest operation (0 = no limit)",
@@ -13478,6 +16248,9 @@ const docTemplate = `{
                         "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.WikiGraphEdge"
                     }
                 },
+                "meta": {
+                    "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.WikiGraphMeta"
+                },
                 "nodes": {
                     "type": "array",
                     "items": {
@@ -13499,6 +16272,34 @@ const docTemplate = `{
                 }
             }
         },
+        "github_com_Tencent_WeKnora_internal_types.WikiGraphMeta": {
+            "type": "object",
+            "properties": {
+                "center": {
+                    "description": "populated in ego mode",
+                    "type": "string"
+                },
+                "depth": {
+                    "description": "populated in ego mode",
+                    "type": "integer"
+                },
+                "mode": {
+                    "type": "string"
+                },
+                "returned": {
+                    "description": "number of nodes actually returned",
+                    "type": "integer"
+                },
+                "total": {
+                    "description": "total node count in the KB before filtering/limit",
+                    "type": "integer"
+                },
+                "truncated": {
+                    "description": "true when Returned \u003c Total (after filters)",
+                    "type": "boolean"
+                }
+            }
+        },
         "github_com_Tencent_WeKnora_internal_types.WikiGraphNode": {
             "type": "object",
             "properties": {
@@ -13509,6 +16310,126 @@ const docTemplate = `{
                 "page_type": {
                     "type": "string"
                 },
+                "slug": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_Tencent_WeKnora_internal_types.WikiIndexEntry": {
+            "type": "object",
+            "properties": {
+                "slug": {
+                    "type": "string"
+                },
+                "summary": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_Tencent_WeKnora_internal_types.WikiIndexGroup": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.WikiIndexEntry"
+                    }
+                },
+                "next_cursor": {
+                    "type": "string"
+                },
+                "total": {
+                    "type": "integer"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_Tencent_WeKnora_internal_types.WikiIndexResponse": {
+            "type": "object",
+            "properties": {
+                "groups": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.WikiIndexGroup"
+                    }
+                },
+                "intro": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "integer"
+                }
+            }
+        },
+        "github_com_Tencent_WeKnora_internal_types.WikiLogEntry": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "description": "Short operation tag: \"ingest\", \"retract\", etc. Matches the ` + "`" + `action` + "`" + `\nargument historically passed to appendLogEntry.",
+                    "type": "string"
+                },
+                "created_at": {
+                    "description": "Server-side timestamp (UTC).",
+                    "type": "string"
+                },
+                "doc_title": {
+                    "description": "Document title at the time of the event. Stored verbatim rather than\njoined at read time so deleted knowledge still has a human-readable\nlabel in the log.",
+                    "type": "string"
+                },
+                "id": {
+                    "description": "Auto-increment identifier. Monotonic within a single database, so\nfrontend pagination uses it as a stable cursor without needing to\ndisambiguate identical created_at values.",
+                    "type": "integer"
+                },
+                "knowledge_base_id": {
+                    "description": "Knowledge base this event belongs to.",
+                    "type": "string"
+                },
+                "knowledge_id": {
+                    "description": "Knowledge ID the event was about (may be empty for KB-level events).",
+                    "type": "string"
+                },
+                "pages_affected": {
+                    "description": "Wiki pages affected by this event. Each ref carries both slug (for\nnavigation) and title (for display) so the log renders human-\nreadable text without a post-hoc slug→title lookup that might fail\nfor now-deleted pages.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.WikiLogPageRef"
+                    }
+                },
+                "summary": {
+                    "description": "One-line summary of the change, as it was when the event was logged.",
+                    "type": "string"
+                },
+                "tenant_id": {
+                    "description": "Tenant scope, mirrored from the enclosing knowledge base.",
+                    "type": "integer"
+                }
+            }
+        },
+        "github_com_Tencent_WeKnora_internal_types.WikiLogEntryListResponse": {
+            "type": "object",
+            "properties": {
+                "entries": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.WikiLogEntry"
+                    }
+                },
+                "next_cursor": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_Tencent_WeKnora_internal_types.WikiLogPageRef": {
+            "type": "object",
+            "properties": {
                 "slug": {
                     "type": "string"
                 },
@@ -13740,6 +16661,35 @@ const docTemplate = `{
                 }
             }
         },
+        "internal_handler.AddFavoriteRequest": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_handler.BatchDeleteKnowledgeRequest": {
+            "type": "object",
+            "required": [
+                "ids",
+                "kb_id"
+            ],
+            "properties": {
+                "ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "kb_id": {
+                    "type": "string"
+                }
+            }
+        },
         "internal_handler.CopyKnowledgeBaseRequest": {
             "type": "object",
             "required": [
@@ -13878,6 +16828,12 @@ const docTemplate = `{
         "internal_handler.GetStorageEngineStatusResponse": {
             "type": "object",
             "properties": {
+                "allowed_providers": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
                 "engines": {
                     "type": "array",
                     "items": {
@@ -13896,6 +16852,10 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "commit_id": {
+                    "type": "string"
+                },
+                "db_migration_error": {
+                    "description": "DBMigrationError carries the human-readable error message recorded when\nthe most recent startup migration attempt failed. Empty when migrations\nsucceeded; non-empty values let the frontend surface a troubleshooting\nbanner instead of silently hiding the DB version row (see issue #1319).",
                     "type": "string"
                 },
                 "db_version": {
@@ -13924,6 +16884,229 @@ const docTemplate = `{
                 }
             }
         },
+        "internal_handler.InitializationRequest": {
+            "type": "object",
+            "required": [
+                "documentSplitting",
+                "embedding",
+                "llm"
+            ],
+            "properties": {
+                "documentSplitting": {
+                    "type": "object",
+                    "required": [
+                        "chunkSize",
+                        "separators"
+                    ],
+                    "properties": {
+                        "chunkOverlap": {
+                            "type": "integer",
+                            "minimum": 0
+                        },
+                        "chunkSize": {
+                            "type": "integer",
+                            "maximum": 10000,
+                            "minimum": 100
+                        },
+                        "separators": {
+                            "type": "array",
+                            "minItems": 1,
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                },
+                "embedding": {
+                    "type": "object",
+                    "required": [
+                        "modelName",
+                        "source"
+                    ],
+                    "properties": {
+                        "apiKey": {
+                            "type": "string"
+                        },
+                        "baseUrl": {
+                            "type": "string"
+                        },
+                        "dimension": {
+                            "description": "添加embedding维度字段",
+                            "type": "integer"
+                        },
+                        "modelName": {
+                            "type": "string"
+                        },
+                        "source": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "llm": {
+                    "type": "object",
+                    "required": [
+                        "modelName",
+                        "source"
+                    ],
+                    "properties": {
+                        "apiKey": {
+                            "type": "string"
+                        },
+                        "baseUrl": {
+                            "type": "string"
+                        },
+                        "modelName": {
+                            "type": "string"
+                        },
+                        "source": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "multimodal": {
+                    "type": "object",
+                    "properties": {
+                        "cos": {
+                            "type": "object",
+                            "properties": {
+                                "appId": {
+                                    "type": "string"
+                                },
+                                "bucketName": {
+                                    "type": "string"
+                                },
+                                "pathPrefix": {
+                                    "type": "string"
+                                },
+                                "region": {
+                                    "type": "string"
+                                },
+                                "secretId": {
+                                    "type": "string"
+                                },
+                                "secretKey": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "enabled": {
+                            "type": "boolean"
+                        },
+                        "minio": {
+                            "type": "object",
+                            "properties": {
+                                "bucketName": {
+                                    "type": "string"
+                                },
+                                "pathPrefix": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "storageType": {
+                            "type": "string"
+                        },
+                        "vlm": {
+                            "type": "object",
+                            "properties": {
+                                "apiKey": {
+                                    "type": "string"
+                                },
+                                "baseUrl": {
+                                    "type": "string"
+                                },
+                                "interfaceType": {
+                                    "description": "\"ollama\" or \"openai\"",
+                                    "type": "string"
+                                },
+                                "modelName": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                },
+                "nodeExtract": {
+                    "type": "object",
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean"
+                        },
+                        "nodes": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "attributes": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "name": {
+                                        "type": "string"
+                                    }
+                                }
+                            }
+                        },
+                        "relations": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "node1": {
+                                        "type": "string"
+                                    },
+                                    "node2": {
+                                        "type": "string"
+                                    },
+                                    "type": {
+                                        "type": "string"
+                                    }
+                                }
+                            }
+                        },
+                        "tags": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        },
+                        "text": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "questionGeneration": {
+                    "type": "object",
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean"
+                        },
+                        "questionCount": {
+                            "type": "integer"
+                        }
+                    }
+                },
+                "rerank": {
+                    "type": "object",
+                    "properties": {
+                        "apiKey": {
+                            "type": "string"
+                        },
+                        "baseUrl": {
+                            "type": "string"
+                        },
+                        "enabled": {
+                            "type": "boolean"
+                        },
+                        "modelName": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "internal_handler.KBModelConfigRequest": {
             "type": "object",
             "required": [
@@ -13949,6 +17132,12 @@ const docTemplate = `{
                         "enableParentChild": {
                             "type": "boolean"
                         },
+                        "languages": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        },
                         "parentChunkSize": {
                             "type": "integer"
                         },
@@ -13963,6 +17152,13 @@ const docTemplate = `{
                             "items": {
                                 "type": "string"
                             }
+                        },
+                        "strategy": {
+                            "description": "Strategy / TokenLimit / Languages use pointer types so the\nhandler can distinguish \"field absent in payload\" (no change)\nfrom \"field present with empty/zero value\" (clear / disable).\nWithout that distinction, users could set strategy=\"auto\" once\nbut never reset it back to legacy / unset.",
+                            "type": "string"
+                        },
+                        "tokenLimit": {
+                            "type": "integer"
                         }
                     }
                 },
@@ -14033,6 +17229,225 @@ const docTemplate = `{
                 }
             }
         },
+        "internal_handler.ModelTestRequest": {
+            "type": "object",
+            "required": [
+                "modelName"
+            ],
+            "properties": {
+                "apiKey": {
+                    "type": "string"
+                },
+                "baseUrl": {
+                    "type": "string"
+                },
+                "customHeaders": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "dimension": {
+                    "type": "integer"
+                },
+                "extraConfig": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "interfaceType": {
+                    "type": "string"
+                },
+                "modelId": {
+                    "description": "ModelID, when set, instructs the handler to substitute any missing\nsecrets (APIKey, AppSecret via ExtraConfig) from the stored model\nrecord before assembling the test client. This lets the \"Test\nconnection\" button work on existing models without making the\nfrontend reload — and ship — the plaintext API key. Other fields\n(BaseURL, ModelName, etc.) on this request still override the\nstored values, so a user can validate a new endpoint against the\nexisting credentials in one click.",
+                    "type": "string"
+                },
+                "modelName": {
+                    "type": "string"
+                },
+                "provider": {
+                    "type": "string"
+                },
+                "source": {
+                    "description": "为空时按需默认为 \"remote\"",
+                    "type": "string"
+                }
+            }
+        },
+        "internal_handler.MoveKnowledgeRequest": {
+            "type": "object",
+            "required": [
+                "knowledge_ids",
+                "mode",
+                "source_kb_id",
+                "target_kb_id"
+            ],
+            "properties": {
+                "knowledge_ids": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "mode": {
+                    "type": "string",
+                    "enum": [
+                        "reuse_vectors",
+                        "reparse"
+                    ]
+                },
+                "source_kb_id": {
+                    "type": "string"
+                },
+                "target_kb_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_handler.MoveKnowledgeResponse": {
+            "type": "object",
+            "properties": {
+                "knowledge_count": {
+                    "type": "integer"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "source_kb_id": {
+                    "type": "string"
+                },
+                "target_kb_id": {
+                    "type": "string"
+                },
+                "task_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_handler.PreviewChunkResult": {
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": "string"
+                },
+                "context_header": {
+                    "type": "string"
+                },
+                "end": {
+                    "type": "integer"
+                },
+                "seq": {
+                    "type": "integer"
+                },
+                "size_chars": {
+                    "type": "integer"
+                },
+                "size_tokens_approx": {
+                    "type": "integer"
+                },
+                "start": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_handler.PreviewChunkingPayload": {
+            "type": "object",
+            "properties": {
+                "chunk_overlap": {
+                    "type": "integer"
+                },
+                "chunk_size": {
+                    "type": "integer"
+                },
+                "languages": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "separators": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "strategy": {
+                    "type": "string"
+                },
+                "token_limit": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_handler.PreviewChunkingRequest": {
+            "type": "object",
+            "properties": {
+                "chunking_config": {
+                    "$ref": "#/definitions/internal_handler.PreviewChunkingPayload"
+                },
+                "text": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_handler.PreviewChunkingResponse": {
+            "type": "object",
+            "properties": {
+                "chunks": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_handler.PreviewChunkResult"
+                    }
+                },
+                "profile": {
+                    "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_infrastructure_chunker.DocProfile"
+                },
+                "rejected": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_infrastructure_chunker.TierRejection"
+                    }
+                },
+                "selected_tier": {
+                    "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_infrastructure_chunker.StrategyTier"
+                },
+                "stats": {
+                    "$ref": "#/definitions/internal_handler.PreviewChunkingStats"
+                },
+                "tier_chain": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_infrastructure_chunker.StrategyTier"
+                    }
+                }
+            }
+        },
+        "internal_handler.PreviewChunkingStats": {
+            "type": "object",
+            "properties": {
+                "avg_chars": {
+                    "type": "integer"
+                },
+                "count": {
+                    "type": "integer"
+                },
+                "max_chars": {
+                    "type": "integer"
+                },
+                "min_chars": {
+                    "type": "integer"
+                },
+                "stddev_chars": {
+                    "type": "integer"
+                },
+                "truncated_to": {
+                    "description": "TruncatedTo, when set, is the original chunk count before the\nresponse was truncated to previewMaxChunks for transport.",
+                    "type": "integer"
+                }
+            }
+        },
         "internal_handler.RemoteModelCheckRequest": {
             "type": "object",
             "required": [
@@ -14061,6 +17476,10 @@ const docTemplate = `{
                     }
                 },
                 "interfaceType": {
+                    "type": "string"
+                },
+                "modelId": {
+                    "description": "ModelID, when set, instructs the handler to substitute any missing\nsecrets (APIKey, AppSecret via ExtraConfig) from the stored model\nrecord before assembling the test client. This lets the \"Test\nconnection\" button work on existing models without making the\nfrontend reload — and ship — the plaintext API key. Other fields\n(BaseURL, ModelName, etc.) on this request still override the\nstored values, so a user can validate a new endpoint against the\nexisting credentials in one click.",
                     "type": "string"
                 },
                 "modelName": {
@@ -14108,14 +17527,20 @@ const docTemplate = `{
                 "cos": {
                     "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.COSEngineConfig"
                 },
+                "ks3": {
+                    "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.KS3EngineConfig"
+                },
                 "minio": {
                     "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.MinIOEngineConfig"
+                },
+                "obs": {
+                    "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.OBSEngineConfig"
                 },
                 "oss": {
                     "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.OSSEngineConfig"
                 },
                 "provider": {
-                    "description": "\"minio\", \"cos\", \"tos\", \"s3\", \"oss\"",
+                    "description": "\"minio\", \"cos\", \"tos\", \"s3\", \"oss\", \"ks3\", \"obs\"",
                     "type": "string"
                 },
                 "s3": {
@@ -14143,6 +17568,9 @@ const docTemplate = `{
         "internal_handler.StorageEngineStatusItem": {
             "type": "object",
             "properties": {
+                "allowed": {
+                    "type": "boolean"
+                },
                 "available": {
                     "description": "whether the engine can be used",
                     "type": "boolean"
@@ -14152,7 +17580,21 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "name": {
-                    "description": "\"local\", \"minio\", \"cos\", \"tos\"",
+                    "description": "\"local\", \"minio\", \"cos\", \"tos\", \"s3\", \"oss\", \"ks3\"",
+                    "type": "string"
+                }
+            }
+        },
+        "internal_handler.TestProviderRequest": {
+            "type": "object",
+            "required": [
+                "provider"
+            ],
+            "properties": {
+                "parameters": {
+                    "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.WebSearchProviderParameters"
+                },
+                "provider": {
                     "type": "string"
                 }
             }
@@ -14277,6 +17719,23 @@ const docTemplate = `{
                 }
             }
         },
+        "internal_handler.UpdateProviderRequest": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "is_default": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "parameters": {
+                    "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.WebSearchProviderParameters"
+                }
+            }
+        },
         "internal_handler.UpdateStoreRequest": {
             "type": "object",
             "required": [
@@ -14285,6 +17744,21 @@ const docTemplate = `{
             "properties": {
                 "name": {
                     "type": "string"
+                }
+            }
+        },
+        "internal_handler.addMemberRequest": {
+            "type": "object",
+            "required": [
+                "email",
+                "role"
+            ],
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "role": {
+                    "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.TenantRole"
                 }
             }
         },
@@ -14303,6 +17777,58 @@ const docTemplate = `{
                 }
             }
         },
+        "internal_handler.auditLogListResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.AuditLog"
+                    }
+                },
+                "next_cursor": {
+                    "type": "integer"
+                },
+                "success": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "internal_handler.createInvitationRequest": {
+            "type": "object",
+            "required": [
+                "email",
+                "role"
+            ],
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "role": {
+                    "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.TenantRole"
+                }
+            }
+        },
+        "internal_handler.createTenantRequest": {
+            "type": "object",
+            "required": [
+                "name"
+            ],
+            "properties": {
+                "description": {
+                    "type": "string",
+                    "maxLength": 512
+                },
+                "name": {
+                    "type": "string",
+                    "maxLength": 128,
+                    "minLength": 1
+                }
+            }
+        },
         "internal_handler.updateLastFAQImportResultDisplayStatusRequest": {
             "type": "object",
             "required": [
@@ -14315,6 +17841,29 @@ const docTemplate = `{
                         "open",
                         "close"
                     ]
+                }
+            }
+        },
+        "internal_handler.updateMemberRoleRequest": {
+            "type": "object",
+            "required": [
+                "role"
+            ],
+            "properties": {
+                "role": {
+                    "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.TenantRole"
+                }
+            }
+        },
+        "internal_handler.updateMyPreferencesRequest": {
+            "type": "object",
+            "properties": {
+                "enable_memory": {
+                    "type": "boolean"
+                },
+                "last_active_tenant_id": {
+                    "description": "LastActiveTenantID lets the SPA persist \"after a fresh login,\ndrop me back into this workspace\" across devices. Send a positive\ntenant id to set / replace, or 0 to clear. Membership is validated\nat next login, not here. Nil = field omitted from the PATCH and\nstays untouched.",
+                    "type": "integer"
                 }
             }
         },
@@ -14365,7 +17914,7 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "enable_memory": {
-                    "description": "Whether memory feature is enabled for this request",
+                    "description": "EnableMemory is the per-request override for the memory feature.\nPointer + omitempty so the request can distinguish three states:\n  nil   = client did not specify; backend falls back to the calling\n          user's persisted preference (user.preferences.enable_memory),\n          defaulting to false if that's also unset. This is the path\n          used by the normal logged-in chat UI now that the toggle is\n          stored server-side per user.\n  *true / *false = explicit override. Embedded mode forces *false so a\n          user's personal memory setting doesn't leak into a widget\n          context; older clients that still send a literal bool also\n          land here (back-compat).",
                     "type": "boolean"
                 },
                 "images": {

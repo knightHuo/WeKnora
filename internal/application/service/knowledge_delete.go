@@ -98,10 +98,18 @@ func (s *knowledgeService) DeleteKnowledge(ctx context.Context, id string) error
 	// and GetEmbeddingModel would fail with "model ID cannot be empty".
 	if strings.TrimSpace(knowledge.EmbeddingModelID) != "" {
 		wg.Go(func() error {
-			tenantInfo := ctx.Value(types.TenantInfoContextKey).(*types.Tenant)
-			retrieveEngine, err := retriever.NewCompositeRetrieveEngine(
+			// kb was already loaded above for resolveFileService — reuse its
+			// VectorStoreID for engine routing.
+			var boundStoreID *string
+			if kb != nil {
+				boundStoreID = kb.VectorStoreID
+			}
+			retrieveEngine, err := retriever.CreateRetrieveEngineForKB(
+				ctx,
 				s.retrieveEngine,
-				tenantInfo.GetEffectiveEngines(),
+				s.ownership,
+				tenantID,
+				boundStoreID,
 			)
 			if err != nil {
 				logger.GetLogger(ctx).WithField("error", err).Errorf("DeleteKnowledge delete knowledge embedding failed")
@@ -282,7 +290,7 @@ func (s *knowledgeService) cleanupWikiOnKnowledgeDelete(ctx context.Context, kno
 	// so the knowledge's disappearance is reflected in the UI.
 	lang, _ := types.LanguageFromContext(ctx)
 	tenantID, _ := types.TenantIDFromContext(ctx)
-	EnqueueWikiRetract(ctx, s.task, s.redisClient, WikiRetractPayload{
+	EnqueueWikiRetract(ctx, s.task, s.taskPendingRepo, WikiRetractPayload{
 		TenantID:        tenantID,
 		KnowledgeBaseID: kbID,
 		KnowledgeID:     knowledgeID,
@@ -309,59 +317,25 @@ func (s *knowledgeService) markKnowledgeDeletedForWiki(ctx context.Context, kbID
 }
 
 // scrubWikiPendingIngest removes queued WikiOpIngest entries for a knowledge
-// from the debounced pending list. Used by both the delete path (we're about
-// to soft-delete the doc, no point ingesting it) and the reparse path (the
+// from task_pending_ops. Used by both the delete path (we're about to
+// soft-delete the doc, no point ingesting it) and the reparse path (the
 // old chunks are about to vanish, so any pending ingest would either race
 // with the cleanup or no-op on an empty chunk set — and the post-process
 // task will enqueue a fresh ingest once new chunks land anyway).
 //
 // Retract entries stay put — delete still needs them to unlink referencing
 // pages, and reparse never enqueues retracts for the doc being reparsed.
-//
-// We use LREM against JSON-encoded entries plus a best-effort raw-UUID
-// fallback for backward compatibility with the legacy format documented in
-// peekPendingList.
+// We pass op=WikiOpIngest so DeleteByDedupKey filters to the ingest rows
+// only.
 func (s *knowledgeService) scrubWikiPendingIngest(ctx context.Context, kbID, knowledgeID, reason string) {
-	if s.redisClient == nil || kbID == "" || knowledgeID == "" {
+	if s.taskPendingRepo == nil || kbID == "" || knowledgeID == "" {
 		return
 	}
-	pendingKey := wikiPendingKeyPrefix + kbID
-
-	// Best-effort: inspect the list, remove matching ingest entries one by one.
-	// The list is bounded (wikiMaxDocsPerBatch at a time on the consumer
-	// side, practical uploads rarely exceed a few dozen), so a single LRange
-	// is safe.
-	items, err := s.redisClient.LRange(ctx, pendingKey, 0, -1).Result()
-	if err != nil {
-		logger.Warnf(ctx, "wiki %s: failed to read pending list %s: %v", reason, pendingKey, err)
+	if err := s.taskPendingRepo.DeleteByDedupKey(ctx, wikiTaskType, wikiTaskScope, kbID, knowledgeID, WikiOpIngest); err != nil {
+		logger.Warnf(ctx, "wiki %s: failed to scrub pending ingest ops for knowledge %s: %v", reason, knowledgeID, err)
 		return
 	}
-	removed := 0
-	for _, item := range items {
-		// Legacy raw-UUID form
-		if item == knowledgeID {
-			if n, err := s.redisClient.LRem(ctx, pendingKey, 0, item).Result(); err == nil {
-				removed += int(n)
-			}
-			continue
-		}
-		if !strings.HasPrefix(item, "{") {
-			continue
-		}
-		var op WikiPendingOp
-		if err := json.Unmarshal([]byte(item), &op); err != nil {
-			continue
-		}
-		if op.KnowledgeID != knowledgeID || op.Op != WikiOpIngest {
-			continue
-		}
-		if n, err := s.redisClient.LRem(ctx, pendingKey, 0, item).Result(); err == nil {
-			removed += int(n)
-		}
-	}
-	if removed > 0 {
-		logger.Infof(ctx, "wiki %s: scrubbed %d pending ingest ops for knowledge %s", reason, removed, knowledgeID)
-	}
+	logger.Infof(ctx, "wiki %s: scrubbed pending ingest ops for knowledge %s", reason, knowledgeID)
 }
 
 // prepareWikiForReparse is the reparse counterpart to
@@ -461,11 +435,14 @@ func (s *knowledgeService) DeleteKnowledgeList(ctx context.Context, ids []string
 	wg := errgroup.Group{}
 	// 2. Delete knowledge embeddings from vector store
 	wg.Go(func() error {
-		tenantInfo := ctx.Value(types.TenantInfoContextKey).(*types.Tenant)
-		retrieveEngine, err := retriever.NewCompositeRetrieveEngine(
-			s.retrieveEngine,
-			tenantInfo.GetEffectiveEngines(),
-		)
+		tenantID := types.MustTenantIDFromContext(ctx)
+		// Batch cleanup spans multiple KBs that may be bound to different
+		// VectorStores; routing this batch through tenant effective engines
+		// keeps the legacy behavior intact.
+		// TODO: fan out the batch per-store using each KB's own
+		// VectorStoreID so cleanup hits the right backend for bound KBs.
+		retrieveEngine, err := retriever.CreateRetrieveEngineForKB(
+			ctx, s.retrieveEngine, s.ownership, tenantID, nil)
 		if err != nil {
 			logger.GetLogger(ctx).WithField("error", err).Errorf("DeleteKnowledge delete knowledge embedding failed")
 			return err
@@ -590,10 +567,21 @@ func (s *knowledgeService) cleanupKnowledgeResources(ctx context.Context, knowle
 
 	tenantInfo := ctx.Value(types.TenantInfoContextKey).(*types.Tenant)
 	if knowledge.EmbeddingModelID != "" {
-		retrieveEngine, err := retriever.NewCompositeRetrieveEngine(
-			s.retrieveEngine,
-			tenantInfo.GetEffectiveEngines(),
-		)
+		// Load KB to discover its VectorStoreID binding. Falls back to tenant
+		// effective engines if the KB has no binding or the load fails.
+		//
+		// Silent fallback risk: if a bound KB fails to load here due to a
+		// transient DB error, the cleanup will delete from env engines and
+		// leave orphan vectors in the bound store. Warn so operators can spot it.
+		var boundStoreID *string
+		if kb, loadErr := s.kbService.GetKnowledgeBaseByID(ctx, knowledge.KnowledgeBaseID); loadErr == nil && kb != nil {
+			boundStoreID = kb.VectorStoreID
+		} else if loadErr != nil {
+			logger.GetLogger(ctx).WithField("error", loadErr).WithField("knowledge_base_id", knowledge.KnowledgeBaseID).
+				Warnf("cleanupKnowledgeResources: failed to load KB for vector store resolution; falling back to tenant effective engines")
+		}
+		retrieveEngine, err := retriever.CreateRetrieveEngineForKB(
+			ctx, s.retrieveEngine, s.ownership, tenantInfo.ID, boundStoreID)
 		if err != nil {
 			logger.GetLogger(ctx).WithField("error", err).Error("Failed to init retrieve engine during cleanup")
 			cleanupErr = errors.Join(cleanupErr, err)

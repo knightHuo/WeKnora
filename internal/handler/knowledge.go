@@ -70,36 +70,46 @@ func (h *KnowledgeHandler) validateKnowledgeBaseAccessWithKBID(c *gin.Context, k
 		return nil, "", 0, "", errors.NewUnauthorizedError("Unauthorized")
 	}
 	userID, userExists := c.Get(types.UserIDContextKey.String())
+	callerTenantRole := types.TenantRoleFromContext(ctx)
 	kbID = secutils.SanitizeForLog(kbID)
 	if kbID == "" {
 		return nil, "", 0, "", errors.NewBadRequestError("Knowledge base ID cannot be empty")
 	}
 	kb, err := h.kbService.GetKnowledgeBaseByID(ctx, kbID)
 	if err != nil {
+		// Same not-found-vs-real-error split as knowledgebase.go's
+		// validateAndGetKnowledgeBase: ErrKnowledgeBaseNotFound is the
+		// expected outcome for a probed/stale kb id and must surface as
+		// 404, not the generic 500 the original code produced.
+		if goerrors.Is(err, repository.ErrKnowledgeBaseNotFound) {
+			return nil, kbID, 0, "", errors.NewNotFoundError("knowledge base not found")
+		}
 		logger.ErrorWithFields(ctx, err, nil)
 		return nil, kbID, 0, "", errors.NewInternalServerError(err.Error())
 	}
 	if kb.TenantID == tenantID {
 		return kb, kbID, tenantID, types.OrgRoleAdmin, nil
 	}
-	if userExists && h.kbShareService != nil {
-		permission, isShared, permErr := h.kbShareService.CheckUserKBPermission(ctx, kbID, userID.(string))
+	if h.kbShareService != nil {
+		permission, isShared, permErr := h.kbShareService.CheckTenantKBPermission(ctx, kbID, tenantID, callerTenantRole)
 		if permErr == nil && isShared {
 			sourceTenantID, srcErr := h.kbShareService.GetKBSourceTenant(ctx, kbID)
 			if srcErr == nil {
-				logger.Infof(ctx, "User %s accessing shared KB %s with permission %s, source tenant: %d",
-					userID.(string), kbID, permission, sourceTenantID)
+				logger.Infof(ctx, "Tenant %d accessing shared KB %s with permission %s, source tenant: %d",
+					tenantID, kbID, permission, sourceTenantID)
 				return kb, kbID, sourceTenantID, permission, nil
 			}
 		}
 	}
-	if userExists && h.agentShareService != nil {
-		can, err := h.agentShareService.UserCanAccessKBViaSomeSharedAgent(ctx, userID.(string), tenantID, kb)
+	if h.agentShareService != nil {
+		can, err := h.agentShareService.TenantCanAccessKBViaSomeSharedAgent(ctx, tenantID, callerTenantRole, kb)
 		if err == nil && can {
-			logger.Infof(ctx, "User %s accessing KB %s via some shared agent", userID.(string), kbID)
+			logger.Infof(ctx, "Tenant %d accessing KB %s via some shared agent", tenantID, kbID)
 			return kb, kbID, kb.TenantID, types.OrgRoleViewer, nil
 		}
 	}
+	_ = userID
+	_ = userExists
 	logger.Warnf(ctx, "Permission denied to access KB %s, tenant ID: %d, KB tenant: %d", kbID, tenantID, kb.TenantID)
 	return nil, kbID, 0, "", errors.NewForbiddenError("Permission denied to access this knowledge base")
 }
@@ -113,6 +123,7 @@ func (h *KnowledgeHandler) resolveKnowledgeAndValidateKBAccess(c *gin.Context, k
 		return nil, ctx, errors.NewUnauthorizedError("Unauthorized")
 	}
 	userID, userExists := c.Get(types.UserIDContextKey.String())
+	callerTenantRole := types.TenantRoleFromContext(ctx)
 
 	knowledge, err := h.kgService.GetKnowledgeByIDOnly(ctx, knowledgeID)
 	if err != nil {
@@ -125,18 +136,18 @@ func (h *KnowledgeHandler) resolveKnowledgeAndValidateKBAccess(c *gin.Context, k
 	}
 
 	// Shared KB: check organization permission
-	if userExists && h.kbShareService != nil {
-		permission, isShared, permErr := h.kbShareService.CheckUserKBPermission(ctx, knowledge.KnowledgeBaseID, userID.(string))
+	if h.kbShareService != nil {
+		permission, isShared, permErr := h.kbShareService.CheckTenantKBPermission(ctx, knowledge.KnowledgeBaseID, tenantID, callerTenantRole)
 		if permErr == nil && isShared && permission.HasPermission(requiredPermission) {
 			effectiveTenantID := knowledge.TenantID
 			return knowledge, context.WithValue(ctx, types.TenantIDContextKey, effectiveTenantID), nil
 		}
 	}
 	// Shared agent: request passes agent_id, or user has any shared agent that can access this KB
-	if userExists && h.agentShareService != nil && requiredPermission == types.OrgRoleViewer {
+	if h.agentShareService != nil && requiredPermission == types.OrgRoleViewer {
 		agentID := c.Query("agent_id")
 		if agentID != "" {
-			agent, err := h.agentShareService.GetSharedAgentForUser(ctx, userID.(string), tenantID, agentID)
+			agent, err := h.agentShareService.GetSharedAgentForTenant(ctx, tenantID, callerTenantRole, agentID)
 			if err == nil && agent != nil {
 				if knowledge.TenantID != agent.TenantID {
 					return nil, ctx, errors.NewForbiddenError("Permission denied to access this knowledge")
@@ -159,12 +170,14 @@ func (h *KnowledgeHandler) resolveKnowledgeAndValidateKBAccess(c *gin.Context, k
 			}
 		} else {
 			kbRef := &types.KnowledgeBase{ID: knowledge.KnowledgeBaseID, TenantID: knowledge.TenantID}
-			can, err := h.agentShareService.UserCanAccessKBViaSomeSharedAgent(ctx, userID.(string), tenantID, kbRef)
+			can, err := h.agentShareService.TenantCanAccessKBViaSomeSharedAgent(ctx, tenantID, callerTenantRole, kbRef)
 			if err == nil && can {
 				return knowledge, context.WithValue(ctx, types.TenantIDContextKey, knowledge.TenantID), nil
 			}
 		}
 	}
+	_ = userID
+	_ = userExists
 	return nil, ctx, errors.NewForbiddenError("Permission denied to access this knowledge")
 }
 
@@ -392,7 +405,7 @@ func (h *KnowledgeHandler) CreateKnowledgeFromURL(c *gin.Context) {
 	// SSRF validation for user-supplied URL
 	if err := secutils.ValidateURLForSSRF(req.URL); err != nil {
 		logger.Warnf(ctx, "SSRF validation failed for knowledge URL: %v", err)
-		c.Error(errors.NewBadRequestError(fmt.Sprintf("URL 未通过安全校验: %v", err)))
+		c.Error(errors.NewBadRequestError(secutils.FormatSSRFError("URL", req.URL, err)))
 		return
 	}
 
@@ -538,9 +551,13 @@ func (h *KnowledgeHandler) GetKnowledge(c *gin.Context) {
 // @Param        id         path      string  true   "知识库ID"
 // @Param        page       query     int     false  "页码"
 // @Param        page_size  query     int     false  "每页数量"
-// @Param        tag_id     query     string  false  "标签ID筛选"
-// @Param        keyword    query     string  false  "关键词搜索"
-// @Param        file_type  query     string  false  "文件类型筛选"
+// @Param        tag_id        query     string  false  "标签ID筛选"
+// @Param        keyword       query     string  false  "关键词搜索"
+// @Param        file_type     query     string  false  "文件类型筛选"
+// @Param        parse_status  query     string  false  "解析状态筛选 (pending/processing/completed/failed)"
+// @Param        source        query     string  false  "来源/渠道筛选 (web/api/feishu/notion/yuque/wechat/...，或 manual/url 按 type 过滤)"
+// @Param        start_time    query     string  false  "更新时间起点，RFC3339 格式"
+// @Param        end_time      query     string  false  "更新时间终点，RFC3339 格式"
 // @Success      200        {object}  map[string]interface{}  "知识列表"
 // @Failure      400        {object}  errors.AppError         "请求参数错误"
 // @Security     Bearer
@@ -569,24 +586,48 @@ func (h *KnowledgeHandler) ListKnowledge(c *gin.Context) {
 		return
 	}
 
-	tagID := c.Query("tag_id")
-	keyword := c.Query("keyword")
-	fileType := c.Query("file_type")
+	filter := types.KnowledgeListFilter{
+		TagID:       c.Query("tag_id"),
+		Keyword:     c.Query("keyword"),
+		FileType:    c.Query("file_type"),
+		ParseStatus: c.Query("parse_status"),
+		Source:      c.Query("source"),
+	}
+	if raw := c.Query("start_time"); raw != "" {
+		t, err := parseFilterTime(raw)
+		if err != nil {
+			c.Error(errors.NewBadRequestError("invalid start_time: " + err.Error()))
+			return
+		}
+		filter.UpdatedFrom = t
+	}
+	if raw := c.Query("end_time"); raw != "" {
+		t, err := parseFilterTime(raw)
+		if err != nil {
+			c.Error(errors.NewBadRequestError("invalid end_time: " + err.Error()))
+			return
+		}
+		filter.UpdatedTo = t
+	}
 
 	logger.Infof(
 		ctx,
-		"Retrieving knowledge list under knowledge base, knowledge base ID: %s, tag_id: %s, keyword: %s, file_type: %s, page: %d, page size: %d, effectiveTenantID: %d",
+		"Retrieving knowledge list under knowledge base, kb_id=%s tag_id=%s keyword=%s file_type=%s parse_status=%s source=%s start_time=%s end_time=%s page=%d page_size=%d effectiveTenantID=%d",
 		secutils.SanitizeForLog(kbID),
-		secutils.SanitizeForLog(tagID),
-		secutils.SanitizeForLog(keyword),
-		secutils.SanitizeForLog(fileType),
+		secutils.SanitizeForLog(filter.TagID),
+		secutils.SanitizeForLog(filter.Keyword),
+		secutils.SanitizeForLog(filter.FileType),
+		secutils.SanitizeForLog(filter.ParseStatus),
+		secutils.SanitizeForLog(filter.Source),
+		secutils.SanitizeForLog(c.Query("start_time")),
+		secutils.SanitizeForLog(c.Query("end_time")),
 		pagination.Page,
 		pagination.PageSize,
 		effectiveTenantID,
 	)
 
 	// Retrieve paginated knowledge entries
-	result, err := h.kgService.ListPagedKnowledgeByKnowledgeBaseID(ctx, kbID, &pagination, tagID, keyword, fileType)
+	result, err := h.kgService.ListPagedKnowledgeByKnowledgeBaseID(ctx, kbID, &pagination, filter)
 	if err != nil {
 		logger.ErrorWithFields(ctx, err, nil)
 		c.Error(errors.NewInternalServerError(err.Error()))
@@ -1048,12 +1089,14 @@ func (h *KnowledgeHandler) GetKnowledgeBatch(c *gin.Context) {
 			c.Error(errors.NewUnauthorizedError("Unauthorized"))
 			return
 		}
-		agent, err := h.agentShareService.GetSharedAgentForUser(ctx, userID, currentTenantID, agentID)
+		callerTenantRole := types.TenantRoleFromContext(ctx)
+		agent, err := h.agentShareService.GetSharedAgentForTenant(ctx, currentTenantID, callerTenantRole, agentID)
 		if err != nil || agent == nil {
 			logger.Warnf(ctx, "GetKnowledgeBatch: invalid or inaccessible shared agent %s: %v", agentID, err)
 			c.Error(errors.NewForbiddenError("Invalid or inaccessible shared agent").WithDetails(err.Error()))
 			return
 		}
+		_ = userID
 		effectiveTenantID = agent.TenantID
 		agentAllowedKBIDs = resolveAgentAllowedKBIDs(agent)
 
@@ -1474,13 +1517,14 @@ func (h *KnowledgeHandler) SearchKnowledge(c *gin.Context) {
 			c.Error(errors.NewUnauthorizedError("user ID not found"))
 			return
 		}
-		userID, _ := userIDVal.(string)
+		_ = userIDVal
 		currentTenantID := c.GetUint64(types.TenantIDContextKey.String())
 		if currentTenantID == 0 {
 			c.Error(errors.NewUnauthorizedError("tenant ID not found"))
 			return
 		}
-		agent, err := h.agentShareService.GetSharedAgentForUser(ctx, userID, currentTenantID, agentID)
+		callerTenantRole := types.TenantRoleFromContext(ctx)
+		agent, err := h.agentShareService.GetSharedAgentForTenant(ctx, currentTenantID, callerTenantRole, agentID)
 		if err != nil {
 			if goerrors.Is(err, service.ErrAgentShareNotFound) || goerrors.Is(err, service.ErrAgentSharePermission) || goerrors.Is(err, service.ErrAgentNotFoundForShare) {
 				c.Error(errors.NewForbiddenError("no permission for this shared agent"))
@@ -1517,14 +1561,16 @@ func (h *KnowledgeHandler) SearchKnowledge(c *gin.Context) {
 			}
 			// `all` mode: authoritative server-side capability filter. Mirrors the
 			// logic in ListKnowledgeBases so @file search, KB listing, and runtime
-			// all agree on what "mode=all" actually means for this agent.
-			filter := tools.DeriveKBFilterFromTools(agent.Config.AllowedTools)
+			// all agree on what "mode=all" actually means for this agent. The
+			// filter is agent-mode aware so quick-answer (RAG-only) skips
+			// wiki-only KBs even though it has no `allowed_tools`.
+			filter := tools.DeriveKBFilterForAgent(agent.Config.AgentMode, agent.Config.AllowedTools)
 			removed := 0
 			for _, kb := range kbs {
 				if kb == nil || kb.Type != types.KnowledgeBaseTypeDocument {
 					continue
 				}
-				if !filter.IsEmpty() && !tools.KBSatisfiesToolRequirements(kb.Capabilities(), agent.Config.AllowedTools) {
+				if !filter.IsEmpty() && !tools.KBSatisfiesAgentRequirements(kb.Capabilities(), agent.Config.AgentMode, agent.Config.AllowedTools) {
 					removed++
 					continue
 				}
@@ -1532,7 +1578,7 @@ func (h *KnowledgeHandler) SearchKnowledge(c *gin.Context) {
 			}
 			if removed > 0 {
 				logger.Infof(ctx,
-					"SearchKnowledge(agent=%s, mode=all): tool-capability filter removed %d KBs",
+					"SearchKnowledge(agent=%s, mode=all): capability filter removed %d KBs",
 					agentID, removed)
 			}
 		}
@@ -1583,6 +1629,19 @@ type MoveKnowledgeResponse struct {
 }
 
 // MoveKnowledge moves knowledge items from one knowledge base to another (async task).
+//
+// MoveKnowledge godoc
+// @Summary      移动知识到其他知识库
+// @Description  将一条或多条知识从源知识库移动到目标知识库（异步），返回任务 ID 用于查询进度
+// @Tags         知识
+// @Accept       json
+// @Produce      json
+// @Param        request  body      handler.MoveKnowledgeRequest  true  "{source_kb_id, target_kb_id, knowledge_ids}"
+// @Success      200      {object}  handler.MoveKnowledgeResponse  "任务信息"
+// @Failure      400      {object}  errors.AppError                "请求参数错误"
+// @Security     Bearer
+// @Security     ApiKeyAuth
+// @Router       /knowledge/move [post]
 func (h *KnowledgeHandler) MoveKnowledge(c *gin.Context) {
 	ctx := c.Request.Context()
 
@@ -1727,6 +1786,18 @@ func (h *KnowledgeHandler) MoveKnowledge(c *gin.Context) {
 }
 
 // GetKnowledgeMoveProgress retrieves the progress of a knowledge move task.
+//
+// GetKnowledgeMoveProgress godoc
+// @Summary      获取知识移动进度
+// @Description  按任务 ID 查询移动进度
+// @Tags         知识
+// @Produce      json
+// @Param        task_id  path      string                       true  "移动任务 ID"
+// @Success      200      {object}  types.KnowledgeMoveProgress  "进度信息"
+// @Failure      404      {object}  errors.AppError              "任务不存在"
+// @Security     Bearer
+// @Security     ApiKeyAuth
+// @Router       /knowledge/move/progress/{task_id} [get]
 func (h *KnowledgeHandler) GetKnowledgeMoveProgress(c *gin.Context) {
 	ctx := c.Request.Context()
 
@@ -1767,6 +1838,26 @@ func resolveAgentAllowedKBIDs(agent *types.CustomAgent) []string {
 		}
 		return nil
 	}
+}
+
+// parseFilterTime parses a query-string timestamp accepted by knowledge list
+// filters. It supports RFC3339, RFC3339 with milliseconds, and the date-only
+// "2006-01-02" form (interpreted at start of day in the local timezone).
+func parseFilterTime(raw string) (time.Time, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return time.Time{}, nil
+	}
+	layouts := []string{time.RFC3339Nano, time.RFC3339, "2006-01-02 15:04:05", "2006-01-02"}
+	var lastErr error
+	for _, layout := range layouts {
+		if t, err := time.ParseInLocation(layout, raw, time.Local); err == nil {
+			return t, nil
+		} else {
+			lastErr = err
+		}
+	}
+	return time.Time{}, lastErr
 }
 
 func sliceContains(ss []string, target string) bool {

@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sync"
 	"time"
@@ -20,6 +21,8 @@ type AgentStreamHandler struct {
 	sessionID          string
 	assistantMessageID string
 	requestID          string
+	receivedAt         time.Time // Handler entry timestamp, used for TTFB logging
+	ttfbLogged         bool      // Guards one-shot TTFB log on first answer chunk
 	assistantMessage   *types.Message
 	streamManager      interfaces.StreamManager
 
@@ -36,6 +39,7 @@ type AgentStreamHandler struct {
 func NewAgentStreamHandler(
 	ctx context.Context,
 	sessionID, assistantMessageID, requestID string,
+	receivedAt time.Time,
 	assistantMessage *types.Message,
 	streamManager interfaces.StreamManager,
 	eventBus *event.EventBus,
@@ -45,6 +49,7 @@ func NewAgentStreamHandler(
 		sessionID:          sessionID,
 		assistantMessageID: assistantMessageID,
 		requestID:          requestID,
+		receivedAt:         receivedAt,
 		assistantMessage:   assistantMessage,
 		streamManager:      streamManager,
 		eventBus:           eventBus,
@@ -66,6 +71,8 @@ func (h *AgentStreamHandler) Subscribe() {
 	h.eventBus.On(event.EventError, h.handleError)
 	h.eventBus.On(event.EventSessionTitle, h.handleSessionTitle)
 	h.eventBus.On(event.EventAgentComplete, h.handleComplete)
+	h.eventBus.On(event.EventToolApprovalRequired, h.handleToolApprovalRequired)
+	h.eventBus.On(event.EventToolApprovalResolved, h.handleToolApprovalResolved)
 }
 
 // handleThought handles agent thought events
@@ -210,6 +217,60 @@ func (h *AgentStreamHandler) handleToolResult(ctx context.Context, evt event.Eve
 	return nil
 }
 
+func toolApprovalDataToMap(v interface{}) map[string]interface{} {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return map[string]interface{}{}
+	}
+	var m map[string]interface{}
+	if err := json.Unmarshal(b, &m); err != nil {
+		return map[string]interface{}{}
+	}
+	return m
+}
+
+// handleToolApprovalRequired persists MCP tool human-approval prompts for SSE / replay (issue #1173).
+func (h *AgentStreamHandler) handleToolApprovalRequired(ctx context.Context, evt event.Event) error {
+	data, ok := evt.Data.(event.ToolApprovalRequiredData)
+	if !ok {
+		return nil
+	}
+	meta := toolApprovalDataToMap(data)
+	meta["pending_id"] = data.PendingID
+	if err := h.streamManager.AppendEvent(h.ctx, h.sessionID, h.assistantMessageID, interfaces.StreamEvent{
+		ID:        evt.ID,
+		Type:      types.ResponseTypeToolApprovalRequired,
+		Content:   "MCP tool requires human approval",
+		Done:      true,
+		Timestamp: time.Now(),
+		Data:      meta,
+	}); err != nil {
+		logger.GetLogger(h.ctx).Error("Append tool approval required event failed", "error", err)
+	}
+	return nil
+}
+
+// handleToolApprovalResolved persists the outcome of a tool approval (issue #1173).
+func (h *AgentStreamHandler) handleToolApprovalResolved(ctx context.Context, evt event.Event) error {
+	data, ok := evt.Data.(event.ToolApprovalResolvedData)
+	if !ok {
+		return nil
+	}
+	meta := toolApprovalDataToMap(data)
+	meta["pending_id"] = data.PendingID
+	if err := h.streamManager.AppendEvent(h.ctx, h.sessionID, h.assistantMessageID, interfaces.StreamEvent{
+		ID:        evt.ID,
+		Type:      types.ResponseTypeToolApprovalResolved,
+		Content:   "MCP tool approval resolved",
+		Done:      true,
+		Timestamp: time.Now(),
+		Data:      meta,
+	}); err != nil {
+		logger.GetLogger(h.ctx).Error("Append tool approval resolved event failed", "error", err)
+	}
+	return nil
+}
+
 // handleReferences handles knowledge references events
 func (h *AgentStreamHandler) handleReferences(ctx context.Context, evt event.Event) error {
 	data, ok := evt.Data.(event.AgentReferencesData)
@@ -288,6 +349,17 @@ func (h *AgentStreamHandler) handleFinalAnswer(ctx context.Context, evt event.Ev
 	// Track start time on first chunk
 	if _, exists := h.eventStartTimes[evt.ID]; !exists {
 		h.eventStartTimes[evt.ID] = time.Now()
+	}
+
+	// Emit a one-shot TTFB log the first time *any* answer chunk reaches
+	// the stream handler. This lets us compare the backend's "request in →
+	// first token out" timing against the frontend-observed TTFB and pin
+	// down where latency lives (network vs server vs LLM).
+	if !h.ttfbLogged && !h.receivedAt.IsZero() {
+		h.ttfbLogged = true
+		ttfb := time.Since(h.receivedAt)
+		logger.GetLogger(h.ctx).Infof("TTFB:first_answer_chunk request_id=%s, session_id=%s, ttfb_ms=%d",
+			h.requestID, h.sessionID, ttfb.Milliseconds())
 	}
 
 	// Accumulate final answer locally for assistant message (database)

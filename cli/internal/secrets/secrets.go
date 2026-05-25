@@ -1,10 +1,10 @@
-// Package secrets stores and retrieves credentials.
+// Package secrets stores and retrieves credentials. Production wires
+// KeyringStore (OS keychain, primary) with FileStore (0600 plaintext under
+// $XDG_CONFIG_HOME/weknora/secrets/, used as a fallback when no keyring
+// backend is available).
 //
-// v0.0 ships a file-only Store implementation (0600 perms under
-// $XDG_CONFIG_HOME/weknora/secrets/). The OS keyring backend lands in v0.1
-// once auth login is needed in TTY contexts (current PR is foundation only).
-//
-// Namespace convention: "weknora:<context>:<key>" where key is "access" or "refresh".
+// Namespace convention: "weknora:<context>:<key>" where key is "access",
+// "refresh", or "api_key".
 package secrets
 
 import (
@@ -13,6 +13,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/Tencent/WeKnora/cli/internal/xdg"
 )
 
 // ErrNotFound is returned when the requested secret does not exist.
@@ -32,15 +34,14 @@ type Store interface {
 }
 
 // FileStore writes 0600 plain-text files under $XDG_CONFIG_HOME/weknora/secrets/<context>.
-// It is the headless / CI default and the keychain fallback. Real keychain support
-// is wired in v0.1 (see ADR-17 for namespace strategy).
+// It is the headless / CI default and the keychain fallback.
 type FileStore struct {
 	root string
 }
 
 // NewFileStore returns a FileStore rooted at $XDG_CONFIG_HOME/weknora/secrets
 // (or ~/.config/weknora/secrets if XDG_CONFIG_HOME is unset). Same convention
-// as config.Path — see that file for the rationale (CLI convention).
+// as config.Path - see that file for the rationale (CLI convention).
 func NewFileStore() (*FileStore, error) {
 	root, err := defaultRoot()
 	if err != nil {
@@ -50,14 +51,7 @@ func NewFileStore() (*FileStore, error) {
 }
 
 func defaultRoot() (string, error) {
-	if x := os.Getenv("XDG_CONFIG_HOME"); x != "" {
-		return filepath.Join(x, "weknora", "secrets"), nil
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("locate home dir: %w", err)
-	}
-	return filepath.Join(home, ".config", "weknora", "secrets"), nil
+	return xdg.Path("XDG_CONFIG_HOME", ".config", "secrets")
 }
 
 func (f *FileStore) path(context, key string) string {
@@ -96,7 +90,7 @@ func (f *FileStore) Delete(context, key string) error {
 
 // Ref returns the file:// URI under which a secret would be stored. Path
 // component is forward-slash-normalized per RFC 8089 (file:///path on Unix,
-// file:///C:/... on Windows) — the wire format must not depend on platform
+// file:///C:/... on Windows) - the wire format must not depend on platform
 // path separator since this string is persisted to config.yaml and may be
 // consumed by tooling on a different OS.
 func (f *FileStore) Ref(context, key string) string {

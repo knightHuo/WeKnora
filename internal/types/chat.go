@@ -27,10 +27,13 @@ type FunctionCall struct {
 
 // ChatResponse chat response
 type ChatResponse struct {
-	Content      string       `json:"content"`
-	ToolCalls    []LLMToolCall `json:"tool_calls,omitempty"`
-	FinishReason string       `json:"finish_reason,omitempty"`
-	Usage        TokenUsage   `json:"usage"`
+	Content string `json:"content"`
+	// ReasoningContent 是支持思考链的模型（DeepSeek thinking、小米 MiMo、vLLM reasoning 等）
+	// 在本轮输出的推理内容。需要在后续多轮请求中原样回传给那些严格校验的供应商。
+	ReasoningContent string        `json:"reasoning_content,omitempty"`
+	ToolCalls        []LLMToolCall `json:"tool_calls,omitempty"`
+	FinishReason     string        `json:"finish_reason,omitempty"`
+	Usage            TokenUsage    `json:"usage"`
 }
 
 // Response type
@@ -57,6 +60,10 @@ const (
 	ResponseTypeAgentQuery ResponseType = "agent_query"
 	// Complete response type (agent complete)
 	ResponseTypeComplete ResponseType = "complete"
+	// ToolApprovalRequired: MCP tool marked dangerous — UI must collect user approval before execution continues
+	ResponseTypeToolApprovalRequired ResponseType = "tool_approval_required"
+	// ToolApprovalResolved: user approved/rejected (or timeout); informational for UI replay
+	ResponseTypeToolApprovalResolved ResponseType = "tool_approval_resolved"
 )
 
 // StreamResponse stream response

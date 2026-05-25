@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/Tencent/WeKnora/internal/errors"
+	"github.com/Tencent/WeKnora/internal/handler/dto"
 	infra_web_search "github.com/Tencent/WeKnora/internal/infrastructure/web_search"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/types"
@@ -110,7 +111,7 @@ func (h *WebSearchProviderHandler) CreateProvider(c *gin.Context) {
 
 	c.JSON(http.StatusCreated, gin.H{
 		"success": true,
-		"data":    provider,
+		"data":    dto.NewWebSearchProviderResponse(provider),
 	})
 }
 
@@ -133,11 +134,23 @@ func (h *WebSearchProviderHandler) ListProviders(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"data":    providers,
+		"data":    dto.NewWebSearchProviderResponses(providers),
 	})
 }
 
-// GetProvider retrieves a single web search provider by ID
+// GetProvider retrieves a single web search provider by ID.
+//
+// GetProvider godoc
+// @Summary      获取网络搜索 Provider 详情
+// @Description  根据 ID 获取指定 provider 配置
+// @Tags         网络搜索
+// @Produce      json
+// @Param        id   path      string                          true  "Provider ID"
+// @Success      200  {object}  types.WebSearchProviderEntity   "Provider 详情"
+// @Failure      404  {object}  map[string]interface{}          "Provider 不存在"
+// @Security     Bearer
+// @Security     ApiKeyAuth
+// @Router       /web-search-providers/{id} [get]
 func (h *WebSearchProviderHandler) GetProvider(c *gin.Context) {
 	ctx := c.Request.Context()
 
@@ -156,11 +169,26 @@ func (h *WebSearchProviderHandler) GetProvider(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"data":    provider,
+		"data":    dto.NewWebSearchProviderResponse(provider),
 	})
 }
 
-// UpdateProvider updates a web search provider
+// UpdateProvider updates a web search provider.
+//
+// UpdateProvider godoc
+// @Summary      更新网络搜索 Provider
+// @Description  更新指定 provider 的名称/描述/参数/是否默认
+// @Tags         网络搜索
+// @Accept       json
+// @Produce      json
+// @Param        id       path      string                          true  "Provider ID"
+// @Param        request  body      handler.UpdateProviderRequest   true  "更新字段"
+// @Success      200      {object}  types.WebSearchProviderEntity   "更新后的 Provider"
+// @Failure      400      {object}  map[string]interface{}          "请求参数错误"
+// @Failure      404      {object}  map[string]interface{}          "Provider 不存在"
+// @Security     Bearer
+// @Security     ApiKeyAuth
+// @Router       /web-search-providers/{id} [put]
 func (h *WebSearchProviderHandler) UpdateProvider(c *gin.Context) {
 	ctx := c.Request.Context()
 
@@ -185,14 +213,44 @@ func (h *WebSearchProviderHandler) UpdateProvider(c *gin.Context) {
 		return
 	}
 
+	// Credentials (api_key) NEVER flow through this endpoint — they live
+	// behind the /credentials subresource. Force-preserve the stored key
+	// regardless of what the body says; log a warning if a stale caller
+	// passes one so we can spot them.
+	if req.Parameters.APIKey != "" && req.Parameters.APIKey != existing.Parameters.APIKey {
+		logger.Warnf(ctx,
+			"deprecated: api_key in PUT /web-search-providers/%s body is ignored; use PUT /credentials instead",
+			secutils.SanitizeForLog(id))
+	}
+	mergedParams := req.Parameters
+	mergedParams.APIKey = existing.Parameters.APIKey
+	// Preserve ExtraConfig when the request omits it (nil); otherwise a
+	// partial PUT would silently drop tenant-configured extras.
+	if mergedParams.ExtraConfig == nil {
+		mergedParams.ExtraConfig = existing.Parameters.ExtraConfig
+	}
+
+	// Preserve existing values for top-level metadata fields when the
+	// request omits them (empty string from the JSON decoder). Without this,
+	// a partial update that only flips IsDefault would clobber Name and
+	// Description on the stored record.
+	mergedName := req.Name
+	if mergedName == "" {
+		mergedName = existing.Name
+	}
+	mergedDescription := req.Description
+	if mergedDescription == "" {
+		mergedDescription = existing.Description
+	}
+
 	// Build updated entity, keeping immutable fields from existing
 	provider := &types.WebSearchProviderEntity{
 		ID:          id,
 		TenantID:    tenantID,
-		Name:        secutils.SanitizeForLog(req.Name),
+		Name:        secutils.SanitizeForLog(mergedName),
 		Provider:    existing.Provider, // Provider type is immutable after creation
-		Description: secutils.SanitizeForLog(req.Description),
-		Parameters:  req.Parameters,
+		Description: secutils.SanitizeForLog(mergedDescription),
+		Parameters:  mergedParams,
 		IsDefault:   req.IsDefault,
 	}
 
@@ -205,13 +263,25 @@ func (h *WebSearchProviderHandler) UpdateProvider(c *gin.Context) {
 	// Re-fetch to get the full stored state
 	updated, _ := h.repo.GetByID(ctx, tenantID, id)
 	if updated != nil {
-		c.JSON(http.StatusOK, gin.H{"success": true, "data": updated})
+		c.JSON(http.StatusOK, gin.H{"success": true, "data": dto.NewWebSearchProviderResponse(updated)})
 	} else {
 		c.JSON(http.StatusOK, gin.H{"success": true})
 	}
 }
 
-// DeleteProvider deletes a web search provider
+// DeleteProvider deletes a web search provider.
+//
+// DeleteProvider godoc
+// @Summary      删除网络搜索 Provider
+// @Description  删除指定 provider 配置
+// @Tags         网络搜索
+// @Produce      json
+// @Param        id   path      string                  true  "Provider ID"
+// @Success      200  {object}  map[string]interface{}  "success: true"
+// @Failure      404  {object}  map[string]interface{}  "Provider 不存在"
+// @Security     Bearer
+// @Security     ApiKeyAuth
+// @Router       /web-search-providers/{id} [delete]
 func (h *WebSearchProviderHandler) DeleteProvider(c *gin.Context) {
 	ctx := c.Request.Context()
 
@@ -238,7 +308,17 @@ func (h *WebSearchProviderHandler) DeleteProvider(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
-// ListProviderTypes returns available provider types and their parameter requirements
+// ListProviderTypes returns available provider types and their parameter requirements.
+//
+// ListProviderTypes godoc
+// @Summary      获取网络搜索 Provider 类型元数据
+// @Description  返回 UI 表单需要的 provider 类型及参数定义
+// @Tags         网络搜索
+// @Produce      json
+// @Success      200  {object}  map[string]interface{}  "provider 类型列表"
+// @Security     Bearer
+// @Security     ApiKeyAuth
+// @Router       /web-search-providers/types [get]
 func (h *WebSearchProviderHandler) ListProviderTypes(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -246,7 +326,19 @@ func (h *WebSearchProviderHandler) ListProviderTypes(c *gin.Context) {
 	})
 }
 
-// TestProviderByID tests an existing saved provider by performing a sample search
+// TestProviderByID tests an existing saved provider by performing a sample search.
+//
+// TestProviderByID godoc
+// @Summary      测试已保存的 Provider
+// @Description  使用数据库中已保存的凭证测试连通性
+// @Tags         网络搜索
+// @Produce      json
+// @Param        id   path      string                  true  "Provider ID"
+// @Success      200  {object}  map[string]interface{}  "测试结果"
+// @Failure      404  {object}  map[string]interface{}  "Provider 不存在"
+// @Security     Bearer
+// @Security     ApiKeyAuth
+// @Router       /web-search-providers/{id}/test [post]
 func (h *WebSearchProviderHandler) TestProviderByID(c *gin.Context) {
 	ctx := c.Request.Context()
 
@@ -278,7 +370,20 @@ type TestProviderRequest struct {
 	Parameters types.WebSearchProviderParameters `json:"parameters"`
 }
 
-// TestProviderRaw tests a provider with raw credentials (no persistence)
+// TestProviderRaw tests a provider with raw credentials (no persistence).
+//
+// TestProviderRaw godoc
+// @Summary      使用原始凭证测试 Provider（不落库）
+// @Description  使用前端表单中尚未保存的凭证测试连通性，用于"测试连接"按钮
+// @Tags         网络搜索
+// @Accept       json
+// @Produce      json
+// @Param        request  body      handler.TestProviderRequest  true  "{provider, parameters}"
+// @Success      200      {object}  map[string]interface{}  "测试结果"
+// @Failure      400      {object}  map[string]interface{}  "请求参数错误"
+// @Security     Bearer
+// @Security     ApiKeyAuth
+// @Router       /web-search-providers/test [post]
 func (h *WebSearchProviderHandler) TestProviderRaw(c *gin.Context) {
 	ctx := c.Request.Context()
 
@@ -297,7 +402,13 @@ func (h *WebSearchProviderHandler) TestProviderRaw(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
-// doTestSearch creates a temporary provider and runs a simple test query
+// doTestSearch creates a temporary provider and runs a simple test query.
+//
+// The provider would otherwise try to authenticate against the upstream API
+// with the redacted placeholder (which is guaranteed to fail with a
+// confusing error). Reject it up front with an actionable message so the
+// user knows they should type a real key or test against the saved config
+// via /test instead.
 func (h *WebSearchProviderHandler) doTestSearch(ctx context.Context, providerType string, params types.WebSearchProviderParameters) error {
 	logger.Infof(ctx, "[WebSearch][Test] testing provider type=%s", providerType)
 	searchProvider, err := h.registry.CreateProvider(providerType, params)

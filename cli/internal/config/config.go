@@ -1,18 +1,18 @@
 // Package config reads and writes the user-level config at
-// $XDG_CONFIG_HOME/weknora/config.yaml. yaml.v3 directly; viper is intentionally
-// not used (see ADR-2).
-//
-// v0.0 supports only Load/Save with multi-host context map; project link
-// (.weknora/project.toml) is wired in v0.2 (ADR-16).
+// $XDG_CONFIG_HOME/weknora/config.yaml. yaml.v3 directly; viper is
+// intentionally not used. Multi-host context map lives here;
+// the per-project link (.weknora/project.yaml) is handled by the
+// projectlink package.
 package config
 
 import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/Tencent/WeKnora/cli/internal/xdg"
 )
 
 // Config is the on-disk schema. Empty zero-value is valid (returned when the
@@ -45,19 +45,9 @@ type Context struct {
 var ErrCorrupt = errors.New("config: file is malformed")
 
 // Path returns the absolute config file path.
-//
-// We honor XDG_CONFIG_HOME on every OS (CLI convention — gh, kubectl, helm
-// all do this even on macOS, where os.UserConfigDir would otherwise return
-// ~/Library/Application Support). Falls back to ~/.config/weknora.
+// Honors XDG_CONFIG_HOME via internal/xdg.
 func Path() (string, error) {
-	if x := os.Getenv("XDG_CONFIG_HOME"); x != "" {
-		return filepath.Join(x, "weknora", "config.yaml"), nil
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("locate home dir: %w", err)
-	}
-	return filepath.Join(home, ".config", "weknora", "config.yaml"), nil
+	return xdg.Path("XDG_CONFIG_HOME", ".config", "config.yaml")
 }
 
 // Load reads the config file. If it does not exist, returns a zero-value
@@ -82,25 +72,11 @@ func Load() (*Config, error) {
 	return &c, nil
 }
 
-// Save writes the config atomically (write temp + rename) with mode 0600.
+// Save writes the config atomically with mode 0600 via internal/xdg.WriteAtomicYAML.
 func Save(c *Config) error {
 	p, err := Path()
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
-		return fmt.Errorf("mkdir config dir: %w", err)
-	}
-	data, err := yaml.Marshal(c)
-	if err != nil {
-		return fmt.Errorf("marshal config: %w", err)
-	}
-	tmp := p + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
-		return fmt.Errorf("write config: %w", err)
-	}
-	if err := os.Rename(tmp, p); err != nil {
-		return fmt.Errorf("rename config: %w", err)
-	}
-	return nil
+	return xdg.WriteAtomicYAML(p, c)
 }

@@ -1,11 +1,55 @@
 import { get, post, put, del, postUpload, getDown } from "../../utils/request";
 
 // 知识库管理 API（列表、创建、获取、更新、删除、复制）
-export function listKnowledgeBases(params?: { agent_id?: string }) {
+export function listKnowledgeBases(params?: {
+  agent_id?: string;
+  /**
+   * Optional creator filter. Server-side semantics:
+   *   - "mine"   → only KBs whose creator_id matches the caller
+   *   - "others" → only KBs created by someone else in this tenant
+   *   - omitted/"all" → no filter
+   * KBs predating the RBAC backfill (creator_id="") never match
+   * mine/others — they fall out of both views by design.
+   */
+  creator?: 'all' | 'mine' | 'others';
+}) {
   const query = new URLSearchParams();
   if (params?.agent_id) query.set('agent_id', params.agent_id);
+  if (params?.creator && params.creator !== 'all') query.set('creator', params.creator);
   const qs = query.toString();
   return get(qs ? `/api/v1/knowledge-bases?${qs}` : '/api/v1/knowledge-bases');
+}
+
+// Read-only vector-store binding metadata enriched onto every KB
+// response (list, create, get, update, pin). Source carries where the
+// binding points; status reports whether that target is currently
+// reachable by the server.
+//
+//   - source 'env'    → KB uses the tenant's env-configured store
+//                       (RETRIEVE_DRIVER). vector_store_id is null and
+//                       vector_store_name is the localized "System
+//                       default" label; vector_store_engine_type still
+//                       reports the underlying engine (e.g. "postgres").
+//   - source 'user'   → KB is bound to a tenant-owned VectorStore.
+//                       vector_store_id / name / engine_type are real.
+//   - source 'shared' → KB belongs to a different tenant and is
+//                       readable via cross-organization sharing. The
+//                       server strips vector_store_id and engine_type
+//                       to avoid leaking the owner tenant's store
+//                       inventory; only this source marker arrives.
+//   - status 'unavailable' → the binding cannot be reached right now
+//                       (deleted row, registry miss, transient infra
+//                       failure). Operators recover via the global
+//                       Vector Stores settings page.
+export type VectorStoreSource = 'env' | 'user' | 'shared' | 'unavailable';
+export type VectorStoreStatus = 'available' | 'unavailable';
+
+export interface KnowledgeBaseStoreView {
+  vector_store_id?: string | null;
+  vector_store_name?: string;
+  vector_store_engine_type?: string;
+  vector_store_source?: VectorStoreSource;
+  vector_store_status?: VectorStoreStatus;
 }
 
 export function createKnowledgeBase(data: {
@@ -15,6 +59,11 @@ export function createKnowledgeBase(data: {
   chunking_config?: any;
   embedding_model_id?: string;
   summary_model_id?: string;
+  // Opt-in binding to a specific tenant-owned VectorStore. Omit (or
+  // send undefined / empty string) to fall back to the env-configured
+  // store. Immutable after creation — UpdateKnowledgeBase intentionally
+  // does not accept this field.
+  vector_store_id?: string;
   vlm_config?: {
     enabled: boolean;
     model_id?: string;
@@ -133,20 +182,28 @@ export function createManualKnowledge(kbId: string, data: { title: string; conte
 
 export function listKnowledgeFiles(
   kbId: string,
-  params: { page: number; page_size: number; tag_id?: string; keyword?: string; file_type?: string },
+  params: {
+    page: number;
+    page_size: number;
+    tag_id?: string;
+    keyword?: string;
+    file_type?: string;
+    parse_status?: string;
+    source?: string;
+    start_time?: string;
+    end_time?: string;
+  },
 ) {
   const query = new URLSearchParams();
   query.append('page', String(params.page));
   query.append('page_size', String(params.page_size));
-  if (params.tag_id) {
-    query.append('tag_id', params.tag_id);
-  }
-  if (params.keyword) {
-    query.append('keyword', params.keyword);
-  }
-  if (params.file_type) {
-    query.append('file_type', params.file_type);
-  }
+  if (params.tag_id) query.append('tag_id', params.tag_id);
+  if (params.keyword) query.append('keyword', params.keyword);
+  if (params.file_type) query.append('file_type', params.file_type);
+  if (params.parse_status) query.append('parse_status', params.parse_status);
+  if (params.source) query.append('source', params.source);
+  if (params.start_time) query.append('start_time', params.start_time);
+  if (params.end_time) query.append('end_time', params.end_time);
   const qs = query.toString();
   return get(`/api/v1/knowledge-bases/${kbId}/knowledge?${qs}`);
 }

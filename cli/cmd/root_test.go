@@ -15,7 +15,7 @@ import (
 
 func TestRoot_Help(t *testing.T) {
 	var out bytes.Buffer
-	root := newRootCmd(cmdutil.New())
+	root := NewRootCmd(cmdutil.New())
 	root.SetArgs([]string{"--help"})
 	root.SetOut(&out)
 	require.NoError(t, root.Execute())
@@ -26,13 +26,15 @@ func TestRoot_Help(t *testing.T) {
 
 func TestVersion_JSON(t *testing.T) {
 	var out bytes.Buffer
-	root := newRootCmd(cmdutil.New())
-	root.SetArgs([]string{"version", "--json"})
+	root := NewRootCmd(cmdutil.New())
+	root.SetArgs([]string{"version", "--format", "json"})
 	root.SetOut(&out)
 	require.NoError(t, root.Execute())
 	got := out.String()
-	assert.True(t, strings.HasPrefix(got, `{"ok":true`), "got: %q", got)
-	assert.Contains(t, got, "version")
+	assert.True(t, strings.HasPrefix(strings.TrimSpace(got), `{`), "expected bare JSON object, got: %q", got)
+	assert.Contains(t, got, `"version":"`)
+	assert.NotContains(t, got, `"ok":`)
+	assert.NotContains(t, got, `"data":`)
 }
 
 // Smoke test for cmdutil.ExitCode wiring; full coverage lives in
@@ -50,7 +52,7 @@ func TestExecute_ExitCodeSurface(t *testing.T) {
 // provides them).
 func TestMapCobraError_PinnedPrefixes(t *testing.T) {
 	t.Run("unknown command", func(t *testing.T) {
-		root := newRootCmd(cmdutil.New())
+		root := NewRootCmd(cmdutil.New())
 		root.SetArgs([]string{"bogus"})
 		root.SetErr(&bytes.Buffer{})
 		root.SetOut(&bytes.Buffer{})
@@ -61,7 +63,7 @@ func TestMapCobraError_PinnedPrefixes(t *testing.T) {
 	})
 
 	t.Run("required flag(s)", func(t *testing.T) {
-		// Self-contained probe — the pin must hold even before resource commands
+		// Self-contained probe - the pin must hold even before resource commands
 		// register their own required flags. RunE is required: without it cobra
 		// treats the command as a parent and skips ValidateRequiredFlags.
 		probe := &cobra.Command{Use: "probe", RunE: func(*cobra.Command, []string) error { return nil }}
@@ -75,7 +77,7 @@ func TestMapCobraError_PinnedPrefixes(t *testing.T) {
 			"cobra required-flag prefix changed; update cobraFlagErrorPrefixes. got: %q", err.Error())
 	})
 
-	t.Run("accepts N arg(s) — ExactArgs", func(t *testing.T) {
+	t.Run("accepts N arg(s) - ExactArgs", func(t *testing.T) {
 		probe := &cobra.Command{
 			Use:  "probe",
 			Args: cobra.ExactArgs(1),
@@ -93,53 +95,47 @@ func TestMapCobraError_PinnedPrefixes(t *testing.T) {
 
 func TestMapCobraError(t *testing.T) {
 	t.Run("nil passes through", func(t *testing.T) {
-		assert.Nil(t, mapCobraError(nil))
+		assert.Nil(t, MapCobraError(nil))
 	})
 	t.Run("non-matching error passes through", func(t *testing.T) {
-		err := mapCobraError(assert.AnError)
+		err := MapCobraError(assert.AnError)
 		assert.Equal(t, assert.AnError, err)
 	})
 	t.Run("unknown command wraps as FlagError", func(t *testing.T) {
-		err := mapCobraError(errors.New(`unknown command "bogus" for "weknora"`))
+		err := MapCobraError(errors.New(`unknown command "bogus" for "weknora"`))
 		var fe *cmdutil.FlagError
 		assert.True(t, errors.As(err, &fe))
 	})
 	t.Run("required flag wraps as FlagError", func(t *testing.T) {
-		err := mapCobraError(errors.New(`required flag(s) "host" not set`))
+		err := MapCobraError(errors.New(`required flag(s) "host" not set`))
 		var fe *cmdutil.FlagError
 		assert.True(t, errors.As(err, &fe))
 	})
 }
 
-func TestArgsRequestJSON(t *testing.T) {
+// TestRoot_ContextFlagPropagation guards the cobra → Factory wiring of the
+// global --context flag. Without this, a future refactor that disconnects
+// PersistentPreRun from f.ContextOverride would only fail e2e - the
+// per-package TestFactory_ContextOverride only proves the Factory side.
+func TestRoot_ContextFlagPropagation(t *testing.T) {
 	cases := []struct {
 		name string
 		args []string
-		want bool
+		want string
 	}{
-		{"empty", nil, false},
-		{"--json bare", []string{"version", "--json"}, true},
-		{"--json=true", []string{"version", "--json=true"}, true},
-		{"--json=1", []string{"version", "--json=1"}, true},
-		{"--json=TRUE", []string{"version", "--json=TRUE"}, true},
-		{"--json=false", []string{"version", "--json=false"}, false},
-		{"unrelated", []string{"bogus", "--kb", "x"}, false},
+		{"no flag", []string{"version"}, ""},
+		{"global before subcmd", []string{"--context", "staging", "version"}, "staging"},
+		{"--context=value form", []string{"--context=prod", "version"}, "prod"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			assert.Equal(t, tc.want, argsRequestJSON(tc.args))
+			f := cmdutil.New()
+			root := NewRootCmd(f)
+			root.SetArgs(tc.args)
+			root.SetOut(&bytes.Buffer{})
+			root.SetErr(&bytes.Buffer{})
+			require.NoError(t, root.Execute())
+			assert.Equal(t, tc.want, f.ContextOverride)
 		})
 	}
-}
-
-func TestWantsJSONOutput(t *testing.T) {
-	// Build a minimal *cobra.Command with the json flag directly so we test
-	// the helper without going through cobra's parse pipeline. wantsJSONOutput
-	// reads cmd.Flags() which on a fresh command equals LocalFlags().
-	c := &cobra.Command{Use: "x"}
-	c.Flags().Bool("json", false, "")
-	assert.False(t, wantsJSONOutput(c), "default: --json unset")
-
-	require.NoError(t, c.Flags().Set("json", "true"))
-	assert.True(t, wantsJSONOutput(c), "--json=true honored")
 }
